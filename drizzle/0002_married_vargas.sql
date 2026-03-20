@@ -1,0 +1,1 @@
+ALTER TABLE "goal_events" ADD COLUMN "goal_type" text;
