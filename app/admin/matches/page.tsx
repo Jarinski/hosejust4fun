@@ -1,22 +1,24 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { matches, matchWeather, players, seasons } from "@/src/db/schema";
-import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
+import { goalEvents, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { buildMatchStory } from "@/src/lib/matchStory";
 
 export default async function MatchesPage() {
-  let weatherTableAvailable = true;
   let allMatches: Array<{
     id: number;
     matchDate: Date;
     seasonName: string | null;
     team1Name: string;
     team2Name: string;
+    team1Score: number;
+    team2Score: number;
+    mvpPlayerId: number | null;
     mvpName: string | null;
-    weatherCondition: string | null;
-    weatherTemperatureC: number | null;
-    weatherPrecipMm: number | null;
   }> = [];
+
+  const scorerPlayers = alias(players, "scorer_players");
 
   try {
     allMatches = await db
@@ -26,18 +28,16 @@ export default async function MatchesPage() {
         seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
+        team1Score: matches.team1Score,
+        team2Score: matches.team2Score,
+        mvpPlayerId: matches.mvpPlayerId,
         mvpName: players.name,
-        weatherCondition: matchWeather.conditionLabel,
-        weatherTemperatureC: matchWeather.temperatureC,
-        weatherPrecipMm: matchWeather.precipMm,
       })
       .from(matches)
       .leftJoin(seasons, eq(matches.seasonId, seasons.id))
       .leftJoin(players, eq(matches.mvpPlayerId, players.id))
-      .leftJoin(matchWeather, eq(matchWeather.matchId, matches.id))
-      .orderBy(desc(matches.matchDate));
+      .orderBy(desc(matches.matchDate), desc(matches.id));
   } catch {
-    weatherTableAvailable = false;
     // Fallback for databases where the MVP migration has not yet been applied.
     const baseMatches = await db
       .select({
@@ -46,46 +46,95 @@ export default async function MatchesPage() {
         seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
+        team1Score: matches.team1Score,
+        team2Score: matches.team2Score,
       })
       .from(matches)
       .leftJoin(seasons, eq(matches.seasonId, seasons.id))
-      .orderBy(desc(matches.matchDate));
+      .orderBy(desc(matches.matchDate), desc(matches.id));
 
     allMatches = baseMatches.map((match) => ({
       ...match,
+      mvpPlayerId: null,
       mvpName: null,
-      weatherCondition: null,
-      weatherTemperatureC: null,
-      weatherPrecipMm: null,
     }));
   }
 
-  if (weatherTableAvailable) {
-    allMatches = await Promise.all(
-      allMatches.map(async (match) => {
-        const hasWeatherData =
-          match.weatherCondition !== null ||
-          match.weatherTemperatureC !== null ||
-          match.weatherPrecipMm !== null;
+  const matchIds = allMatches.map((match) => match.id);
 
-        if (hasWeatherData) {
-          return match;
-        }
+  const [allGoals, allWeather] = await Promise.all([
+    matchIds.length > 0
+      ? db
+          .select({
+            matchId: goalEvents.matchId,
+            teamSide: goalEvents.teamSide,
+            isOwnGoal: goalEvents.isOwnGoal,
+            scorerPlayerId: goalEvents.scorerPlayerId,
+            scorerName: scorerPlayers.name,
+            assistPlayerId: goalEvents.assistPlayerId,
+          })
+          .from(goalEvents)
+          .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
+          .where(inArray(goalEvents.matchId, matchIds))
+      : Promise.resolve([]),
+    matchIds.length > 0
+      ? db
+          .select({
+            matchId: matchWeather.matchId,
+            conditionLabel: matchWeather.conditionLabel,
+            temperatureC: matchWeather.temperatureC,
+            precipMm: matchWeather.precipMm,
+          })
+          .from(matchWeather)
+          .where(inArray(matchWeather.matchId, matchIds))
+          .catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
-        try {
-          const weatherData = await ensureWeatherStoredForMatch(match.id, match.matchDate);
-          return {
-            ...match,
-            weatherCondition: weatherData.conditionLabel,
-            weatherTemperatureC: weatherData.temperatureC,
-            weatherPrecipMm: weatherData.precipMm,
-          };
-        } catch {
-          return match;
-        }
-      })
-    );
+  const goalsByMatchId = new Map<number, typeof allGoals>();
+  for (const goal of allGoals) {
+    const existing = goalsByMatchId.get(goal.matchId);
+    if (existing) {
+      existing.push(goal);
+    } else {
+      goalsByMatchId.set(goal.matchId, [goal]);
+    }
   }
+
+  const weatherByMatchId = new Map<number, (typeof allWeather)[number]>();
+  for (const weather of allWeather) {
+    weatherByMatchId.set(weather.matchId, weather);
+  }
+
+  const storiesByMatchId = new Map<number, string[]>();
+  allMatches.forEach((match, index) => {
+    const story = buildMatchStory({
+      match: {
+        team1Name: match.team1Name,
+        team2Name: match.team2Name,
+        team1Goals: match.team1Score,
+        team2Goals: match.team2Score,
+        mvpPlayerId: match.mvpPlayerId,
+        mvpName: match.mvpName,
+      },
+      goals: goalsByMatchId.get(match.id) ?? [],
+      weather: weatherByMatchId.get(match.id)
+        ? {
+            conditionLabel: weatherByMatchId.get(match.id)!.conditionLabel,
+            temperatureC: weatherByMatchId.get(match.id)!.temperatureC,
+            precipMm: weatherByMatchId.get(match.id)!.precipMm,
+          }
+        : null,
+      previousMatches: allMatches.slice(index + 1).map((previousMatch) => ({
+        team1Name: previousMatch.team1Name,
+        team2Name: previousMatch.team2Name,
+        team1Goals: previousMatch.team1Score,
+        team2Goals: previousMatch.team2Score,
+      })),
+    });
+
+    storiesByMatchId.set(match.id, story.slice(0, 2));
+  });
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
@@ -123,16 +172,30 @@ export default async function MatchesPage() {
                       <p>
                         {match.team1Name} vs {match.team2Name}
                       </p>
+                      <p className="text-xs text-zinc-400">
+                        Ergebnis: {match.team1Score}:{match.team2Score}
+                      </p>
                       <p className="text-xs text-zinc-400">MVP: {match.mvpName ?? "—"}</p>
+                      {(storiesByMatchId.get(match.id) ?? []).map((line, index) => (
+                        <p key={`${match.id}-story-${index}`} className="text-xs text-zinc-500">
+                          {line}
+                        </p>
+                      ))}
                     </td>
                     <td className="px-4 py-3 text-zinc-300">
-                      {match.weatherCondition || match.weatherTemperatureC !== null || match.weatherPrecipMm !== null ? (
+                      {weatherByMatchId.get(match.id) ? (
                         <>
-                          <p>{match.weatherCondition ?? "Wetter erfasst"}</p>
+                          <p>{weatherByMatchId.get(match.id)?.conditionLabel ?? "Wetter erfasst"}</p>
                           <p className="text-xs text-zinc-400">
-                            {match.weatherTemperatureC !== null ? `${match.weatherTemperatureC.toFixed(1)}°C` : "—"}
+                            {weatherByMatchId.get(match.id)?.temperatureC !== null &&
+                            weatherByMatchId.get(match.id)?.temperatureC !== undefined
+                              ? `${weatherByMatchId.get(match.id)?.temperatureC.toFixed(1)}°C`
+                              : "—"}
                             {" · "}
-                            {match.weatherPrecipMm !== null ? `${match.weatherPrecipMm.toFixed(1)} mm` : "kein Niederschlag"}
+                            {weatherByMatchId.get(match.id)?.precipMm !== null &&
+                            weatherByMatchId.get(match.id)?.precipMm !== undefined
+                              ? `${weatherByMatchId.get(match.id)?.precipMm.toFixed(1)} mm`
+                              : "kein Niederschlag"}
                           </p>
                         </>
                       ) : (

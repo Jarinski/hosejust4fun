@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { buildMatchStory } from "@/src/lib/matchStory";
 import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 import { updateMatchMVP } from "./actions";
 
@@ -42,72 +43,6 @@ function sortGoalsForTimeline(goals: GoalEventView[]) {
 
     return a.id - b.id;
   });
-}
-
-function buildMatchInsights({
-  sortedGoals,
-  playerNameById,
-  mvpPlayerId,
-  team1Goals,
-  team2Goals,
-}: {
-  sortedGoals: GoalEventView[];
-  playerNameById: Map<number, string>;
-  mvpPlayerId: number | null;
-  team1Goals: number;
-  team2Goals: number;
-}) {
-  const insights: string[] = [];
-  const totalGoals = team1Goals + team2Goals;
-  const ownGoals = sortedGoals.filter((goal) => goal.isOwnGoal).length;
-
-  const goalsByScorer = new Map<number, number>();
-
-  for (const goal of sortedGoals) {
-    if (goal.isOwnGoal) continue;
-    goalsByScorer.set(goal.scorerPlayerId, (goalsByScorer.get(goal.scorerPlayerId) ?? 0) + 1);
-  }
-
-  const scorersByGoals = [...goalsByScorer.entries()].sort((a, b) => b[1] - a[1]);
-  const hattricks = scorersByGoals.filter(([, goals]) => goals >= 3);
-  const doublePacks = scorersByGoals.filter(([, goals]) => goals >= 2);
-
-  if (hattricks.length > 0) {
-    const [playerId, goals] = hattricks[0];
-    const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
-    insights.push(`🎩 Hattrick: ${name} traf ${goals}-mal.`);
-  } else if (doublePacks.length > 0) {
-    const [playerId, goals] = doublePacks[0];
-    const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
-    insights.push(`⚽ Doppelpack: ${name} traf ${goals}-mal.`);
-  }
-
-  if (mvpPlayerId !== null) {
-    insights.push(`🏆 MVP des Spiels: ${playerNameById.get(mvpPlayerId) ?? `Spieler #${mvpPlayerId}`}.`);
-  }
-
-  if (totalGoals >= 8) {
-    insights.push(`🔥 Torfestival mit ${totalGoals} Treffern.`);
-  }
-
-  const margin = Math.abs(team1Goals - team2Goals);
-  if (margin === 0) {
-    insights.push("🤝 Punkteteilung in einem ausgeglichenen Duell.");
-  } else if (margin === 1) {
-    insights.push("🧨 Knapper Sieg mit nur einem Tor Unterschied.");
-  } else if (margin >= 3) {
-    insights.push(`📈 Deutlicher Sieg mit ${margin} Toren Vorsprung.`);
-  }
-
-  if (ownGoals > 0) {
-    insights.push(
-      ownGoals === 1
-        ? "📉 Ein Eigentor beeinflusste den Spielverlauf."
-        : `📉 ${ownGoals} Eigentore beeinflussten den Spielverlauf.`
-    );
-  }
-
-  return insights;
 }
 
 export default async function MatchDetailPage({
@@ -320,6 +255,28 @@ export default async function MatchDetailPage({
   const team2Goals = sortedGoals.filter((goal) => goal.teamSide === "team_2").length;
   const totalGoals = team1Goals + team2Goals;
 
+  const previousMatches = await db
+    .select({
+      team1Name: matches.team1Name,
+      team2Name: matches.team2Name,
+      team1Goals: matches.team1Score,
+      team2Goals: matches.team2Score,
+    })
+    .from(matches)
+    .where(
+      and(
+        lt(matches.matchDate, match.matchDate),
+        or(
+          eq(matches.team1Name, match.team1Name),
+          eq(matches.team2Name, match.team1Name),
+          eq(matches.team1Name, match.team2Name),
+          eq(matches.team2Name, match.team2Name)
+        )
+      )
+    )
+    .orderBy(desc(matches.matchDate))
+    .limit(30);
+
   const ownGoalsCount = sortedGoals.filter((goal) => goal.isOwnGoal).length;
   const assistsCount = sortedGoals.filter((goal) => !goal.isOwnGoal && goal.assistPlayerId !== null).length;
 
@@ -353,12 +310,31 @@ export default async function MatchDetailPage({
     }
   );
 
-  const insights = buildMatchInsights({
-    sortedGoals,
-    playerNameById,
-    mvpPlayerId: match.mvpPlayerId,
-    team1Goals,
-    team2Goals,
+  const insights = buildMatchStory({
+    match: {
+      team1Name: match.team1Name,
+      team2Name: match.team2Name,
+      team1Goals,
+      team2Goals,
+      mvpPlayerId: match.mvpPlayerId,
+      mvpName:
+        match.mvpPlayerId !== null
+          ? (playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`)
+          : null,
+    },
+    goals: sortedGoals.map((goal) => ({
+      teamSide: goal.teamSide,
+      isOwnGoal: goal.isOwnGoal,
+      scorerPlayerId: goal.scorerPlayerId,
+      scorerName: playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`,
+      assistPlayerId: goal.assistPlayerId,
+    })),
+    weather: {
+      conditionLabel: match.weatherCondition,
+      temperatureC: match.weatherTemperatureC,
+      precipMm: match.weatherPrecipMm,
+    },
+    previousMatches,
   });
 
   async function saveMVP(formData: FormData) {

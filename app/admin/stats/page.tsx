@@ -31,6 +31,11 @@ const statsPages = [
     href: "/admin/stats/goals-against",
     description: "Wer kassiert die meisten Gegentore pro Spiel und welche Team-Kombis sind anfällig",
   },
+  {
+    title: "Wetter-Statistik",
+    href: "/admin/stats/weather",
+    description: "Spielerleistungen bei Kälte, Regen und Schlechtwetter",
+  },
 ] as const;
 
 export default function StatsOverviewPage() {

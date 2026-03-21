@@ -2,7 +2,8 @@ import Link from "next/link";
 import { alias } from "drizzle-orm/pg-core";
 import { asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { buildMatchStory } from "@/src/lib/matchStory";
 
 type MatchBrief = {
   id: number;
@@ -12,6 +13,7 @@ type MatchBrief = {
   team2Name: string;
   team1Score: number;
   team2Score: number;
+  mvpPlayerId: number | null;
   mvpName: string | null;
 };
 
@@ -21,127 +23,17 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
-function getResultForTeam(match: MatchBrief, teamName: string): "win" | "loss" | "draw" {
-  const isTeam1 = match.team1Name === teamName;
-  const ownScore = isTeam1 ? match.team1Score : match.team2Score;
-  const oppScore = isTeam1 ? match.team2Score : match.team1Score;
-
-  if (ownScore > oppScore) return "win";
-  if (ownScore < oppScore) return "loss";
-  return "draw";
-}
-
-function buildNewsflash(
-  latestMatch: MatchBrief,
-  latestGoals: Array<{
-    scorerName: string;
-    assistName: string | null;
-  }>,
-  allMatches: MatchBrief[],
-) {
-  const insights: string[] = [];
-  const scorerCount = new Map<string, number>();
-
-  for (const goal of latestGoals) {
-    scorerCount.set(goal.scorerName, (scorerCount.get(goal.scorerName) ?? 0) + 1);
-  }
-
-  const scorersSorted = [...scorerCount.entries()].sort((a, b) => b[1] - a[1]);
-  const hattrick = scorersSorted.find(([, goals]) => goals >= 3);
-  const doublePack = scorersSorted.find(([, goals]) => goals >= 2);
-
-  if (hattrick) {
-    insights.push(`🎩 Hattrick-Alarm: ${hattrick[0]} erzielte ${hattrick[1]} Treffer.`);
-  } else if (doublePack) {
-    insights.push(`⚽ Doppelpack: ${doublePack[0]} traf ${doublePack[1]}-mal.`);
-  }
-
-  if (latestMatch.mvpName) {
-    insights.push(`🏆 MVP des Spiels: ${latestMatch.mvpName}.`);
-  }
-
-  const totalGoals = latestMatch.team1Score + latestMatch.team2Score;
-  const assistsCount = latestGoals.filter((goal) => goal.assistName !== null).length;
-
-  if (totalGoals >= 8) {
-    insights.push(`🔥 Torfestival mit ${totalGoals} Treffern insgesamt.`);
-  } else if (totalGoals <= 3) {
-    insights.push(`🧱 Defensiv geprägt: nur ${totalGoals} Tore in dieser Partie.`);
-  }
-
-  if (totalGoals > 0) {
-    if (assistsCount === 0) {
-      insights.push("🎯 Alle Tore fielen als Solo-Aktionen ohne Assist.");
-    } else if (assistsCount / totalGoals >= 0.7) {
-      insights.push(`🤝 Starkes Kombinationsspiel: ${assistsCount} von ${totalGoals} Toren mit Vorlage.`);
-    }
-  }
-
-  const margin = Math.abs(latestMatch.team1Score - latestMatch.team2Score);
-  if (margin >= 3) {
-    insights.push("📈 Deutlicher Sieg mit klarer Dominanz auf dem Platz.");
-  } else if (margin === 1) {
-    insights.push("⏱️ Enges Spiel: Entscheidung mit nur einem Tor Unterschied.");
-  }
-
-  const winnerTeam =
-    latestMatch.team1Score > latestMatch.team2Score
-      ? latestMatch.team1Name
-      : latestMatch.team2Score > latestMatch.team1Score
-        ? latestMatch.team2Name
-        : null;
-  const loserTeam =
-    latestMatch.team1Score < latestMatch.team2Score
-      ? latestMatch.team1Name
-      : latestMatch.team2Score < latestMatch.team1Score
-        ? latestMatch.team2Name
-        : null;
-
-  const previousMatches = allMatches.filter((match) => match.id !== latestMatch.id);
-
-  if (winnerTeam) {
-    let previousLossStreak = 0;
-    for (const match of previousMatches) {
-      if (match.team1Name !== winnerTeam && match.team2Name !== winnerTeam) continue;
-      const result = getResultForTeam(match, winnerTeam);
-      if (result === "loss") {
-        previousLossStreak += 1;
-        continue;
-      }
-      break;
-    }
-    if (previousLossStreak >= 2) {
-      insights.push(`🔁 ${winnerTeam} beendet eine Niederlagenserie von ${previousLossStreak} Spielen.`);
-    }
-  }
-
-  if (loserTeam) {
-    let losingStreak = 1;
-    for (const match of previousMatches) {
-      if (match.team1Name !== loserTeam && match.team2Name !== loserTeam) continue;
-      const result = getResultForTeam(match, loserTeam);
-      if (result === "loss") {
-        losingStreak += 1;
-        continue;
-      }
-      break;
-    }
-    if (losingStreak >= 2) {
-      insights.push(`📉 ${loserTeam} steckt aktuell in einer Niederlagenserie (${losingStreak} Spiele).`);
-    }
-  }
-
-  if (insights.length < 2) {
-    insights.push(`📊 Endstand: ${latestMatch.team1Score}:${latestMatch.team2Score} in ${latestMatch.seasonName ?? "der aktuellen Saison"}.`);
-  }
-
-  return insights.slice(0, 4);
-}
-
 export default async function Home() {
   const mvpPlayers = alias(players, "mvp_players");
   const scorerPlayers = alias(players, "scorer_players");
-  const assistPlayers = alias(players, "assist_players");
+  
+  type LatestMatchGoal = {
+    teamSide: "team_1" | "team_2";
+    isOwnGoal: boolean;
+    scorerPlayerId: number;
+    scorerName: string;
+    assistPlayerId: number | null;
+  };
 
   let mvpColumnAvailable = true;
   let recentMatches: MatchBrief[] = [];
@@ -157,6 +49,7 @@ export default async function Home() {
         team2Name: matches.team2Name,
         team1Score: matches.team1Score,
         team2Score: matches.team2Score,
+        mvpPlayerId: matches.mvpPlayerId,
         mvpName: mvpPlayers.name,
       })
       .from(matches)
@@ -174,6 +67,7 @@ export default async function Home() {
         team2Name: matches.team2Name,
         team1Score: matches.team1Score,
         team2Score: matches.team2Score,
+        mvpPlayerId: matches.mvpPlayerId,
         mvpName: mvpPlayers.name,
       })
       .from(matches)
@@ -192,6 +86,7 @@ export default async function Home() {
         team2Name: matches.team2Name,
         team1Score: matches.team1Score,
         team2Score: matches.team2Score,
+        mvpPlayerId: sql<number | null>`null`,
       })
       .from(matches)
       .leftJoin(seasons, eq(matches.seasonId, seasons.id))
@@ -207,6 +102,7 @@ export default async function Home() {
         team2Name: matches.team2Name,
         team1Score: matches.team1Score,
         team2Score: matches.team2Score,
+        mvpPlayerId: sql<number | null>`null`,
       })
       .from(matches)
       .leftJoin(seasons, eq(matches.seasonId, seasons.id))
@@ -217,18 +113,55 @@ export default async function Home() {
   }
 
   const latestMatch = recentMatches[0] ?? null;
+  let ownGoalColumnAvailable = true;
 
-  const latestMatchGoals = latestMatch
-    ? await db
+  let latestMatchGoals: LatestMatchGoal[] = [];
+  if (latestMatch) {
+    try {
+      latestMatchGoals = await db
         .select({
+          teamSide: goalEvents.teamSide,
+          isOwnGoal: goalEvents.isOwnGoal,
+          scorerPlayerId: goalEvents.scorerPlayerId,
           scorerName: scorerPlayers.name,
-          assistName: assistPlayers.name,
+          assistPlayerId: goalEvents.assistPlayerId,
         })
         .from(goalEvents)
         .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
-        .leftJoin(assistPlayers, eq(goalEvents.assistPlayerId, assistPlayers.id))
-        .where(eq(goalEvents.matchId, latestMatch.id))
-    : [];
+        .where(eq(goalEvents.matchId, latestMatch.id));
+    } catch {
+      ownGoalColumnAvailable = false;
+
+      const legacyGoals = await db
+        .select({
+          teamSide: goalEvents.teamSide,
+          scorerPlayerId: goalEvents.scorerPlayerId,
+          scorerName: scorerPlayers.name,
+          assistPlayerId: goalEvents.assistPlayerId,
+        })
+        .from(goalEvents)
+        .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
+        .where(eq(goalEvents.matchId, latestMatch.id));
+
+      latestMatchGoals = legacyGoals.map((goal) => ({
+        ...goal,
+        isOwnGoal: false,
+      }));
+    }
+  }
+
+  const latestMatchWeather = latestMatch
+    ? await db
+        .select({
+          conditionLabel: matchWeather.conditionLabel,
+          temperatureC: matchWeather.temperatureC,
+          precipMm: matchWeather.precipMm,
+        })
+        .from(matchWeather)
+        .where(eq(matchWeather.matchId, latestMatch.id))
+        .then((rows) => rows[0] ?? null)
+        .catch(() => null)
+    : null;
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
@@ -288,7 +221,24 @@ export default async function Home() {
     : [];
 
   const newsflash = latestMatch
-    ? buildNewsflash(latestMatch, latestMatchGoals, allMatchesForSeries)
+    ? buildMatchStory({
+        match: {
+          team1Name: latestMatch.team1Name,
+          team2Name: latestMatch.team2Name,
+          team1Goals: latestMatch.team1Score,
+          team2Goals: latestMatch.team2Score,
+          mvpPlayerId: latestMatch.mvpPlayerId,
+          mvpName: latestMatch.mvpName,
+        },
+        goals: latestMatchGoals,
+        weather: latestMatchWeather,
+        previousMatches: allMatchesForSeries.slice(1).map((match) => ({
+          team1Name: match.team1Name,
+          team2Name: match.team2Name,
+          team1Goals: match.team1Score,
+          team2Goals: match.team2Score,
+        })),
+      }).slice(0, ownGoalColumnAvailable ? 3 : 2)
     : [];
 
   const statCards = [
