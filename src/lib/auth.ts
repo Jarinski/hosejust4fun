@@ -15,9 +15,28 @@ type SessionPayload = {
 export const SESSION_COOKIE_NAME = "hose_admin_session";
 
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
+const MIN_AUTH_SECRET_LENGTH = 32;
+
+const LOGIN_MAX_FAILED_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+type LoginAttemptState = {
+  failedAt: number[];
+  lockedUntil: number;
+};
+
+const loginAttemptsByIp = new Map<string, LoginAttemptState>();
 
 function getAuthSecret() {
-  return process.env.AUTH_SECRET ?? "dev-only-auth-secret-change-me";
+  const secretFromEnv = process.env.AUTH_SECRET;
+  if (!secretFromEnv || secretFromEnv.length < MIN_AUTH_SECRET_LENGTH) {
+    throw new Error(
+      `AUTH_SECRET muss gesetzt sein und mindestens ${MIN_AUTH_SECRET_LENGTH} Zeichen haben.`
+    );
+  }
+
+  return secretFromEnv;
 }
 
 function sign(value: string) {
@@ -73,6 +92,102 @@ export function verifyAdminCredentials(username: string, password: string) {
   return accounts.find(
     (account) => account.username === normalizedUsername && account.password === password
   );
+}
+
+export function getClientIpFromHeaders(headers: Headers) {
+  const xForwardedFor = headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    const firstIp = xForwardedFor.split(",")[0]?.trim();
+    if (firstIp) {
+      return firstIp;
+    }
+  }
+
+  const xRealIp = headers.get("x-real-ip")?.trim();
+  if (xRealIp) {
+    return xRealIp;
+  }
+
+  return "unknown";
+}
+
+function getOrCreateLoginAttemptState(ip: string) {
+  const existing = loginAttemptsByIp.get(ip);
+  if (existing) {
+    return existing;
+  }
+
+  const created: LoginAttemptState = {
+    failedAt: [],
+    lockedUntil: 0,
+  };
+
+  loginAttemptsByIp.set(ip, created);
+  return created;
+}
+
+function pruneExpiredAttempts(state: LoginAttemptState, now: number) {
+  state.failedAt = state.failedAt.filter((timestamp) => now - timestamp <= LOGIN_WINDOW_MS);
+
+  if (state.failedAt.length === 0 && state.lockedUntil <= now) {
+    state.lockedUntil = 0;
+  }
+}
+
+export function checkLoginRateLimit(ip: string) {
+  const now = Date.now();
+  const state = getOrCreateLoginAttemptState(ip);
+  pruneExpiredAttempts(state, now);
+
+  if (state.lockedUntil > now) {
+    const retryAfterSeconds = Math.ceil((state.lockedUntil - now) / 1000);
+    console.warn("[auth] admin_login_locked", { ip, retryAfterSeconds });
+
+    return {
+      allowed: false,
+      retryAfterSeconds,
+      remainingAttempts: 0,
+    };
+  }
+
+  return {
+    allowed: true,
+    retryAfterSeconds: 0,
+    remainingAttempts: Math.max(0, LOGIN_MAX_FAILED_ATTEMPTS - state.failedAt.length),
+  };
+}
+
+export function recordFailedLoginAttempt(ip: string, username: string) {
+  const now = Date.now();
+  const state = getOrCreateLoginAttemptState(ip);
+
+  pruneExpiredAttempts(state, now);
+  state.failedAt.push(now);
+
+  const failures = state.failedAt.length;
+  const shouldLock = failures >= LOGIN_MAX_FAILED_ATTEMPTS;
+
+  if (shouldLock) {
+    state.lockedUntil = now + LOGIN_LOCK_MS;
+    state.failedAt = [];
+  }
+
+  console.warn("[auth] admin_login_failed", {
+    ip,
+    username,
+    failuresWithinWindow: failures,
+    maxFailures: LOGIN_MAX_FAILED_ATTEMPTS,
+    lockedUntil: shouldLock ? new Date(state.lockedUntil).toISOString() : null,
+  });
+
+  return {
+    locked: shouldLock,
+    retryAfterSeconds: shouldLock ? Math.ceil(LOGIN_LOCK_MS / 1000) : 0,
+  };
+}
+
+export function resetFailedLoginAttempts(ip: string) {
+  loginAttemptsByIp.delete(ip);
 }
 
 function buildSessionToken(payload: SessionPayload) {

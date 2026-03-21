@@ -1,8 +1,13 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
+  checkLoginRateLimit,
   createAdminSession,
+  getClientIpFromHeaders,
   getAdminSession,
   hasAdminAccountsConfigured,
+  recordFailedLoginAttempt,
+  resetFailedLoginAttempts,
   sanitizeNextPath,
   verifyAdminCredentials,
 } from "@/src/lib/auth";
@@ -10,7 +15,7 @@ import {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; retry?: string }>;
 }) {
   const params = await searchParams;
   const nextPath = sanitizeNextPath(params.next);
@@ -24,9 +29,19 @@ export default async function LoginPage({
   async function loginAction(formData: FormData) {
     "use server";
 
+    const requestHeaders = await headers();
+    const ip = getClientIpFromHeaders(requestHeaders);
+
     const username = String(formData.get("username") ?? "").trim();
     const password = String(formData.get("password") ?? "");
     const targetPath = sanitizeNextPath(String(formData.get("next") ?? "/"));
+
+    const rateLimit = checkLoginRateLimit(ip);
+    if (!rateLimit.allowed) {
+      redirect(
+        `/login?error=locked&retry=${rateLimit.retryAfterSeconds}&next=${encodeURIComponent(targetPath)}`
+      );
+    }
 
     if (!hasAdminAccountsConfigured()) {
       redirect(`/login?error=config&next=${encodeURIComponent(targetPath)}`);
@@ -34,9 +49,17 @@ export default async function LoginPage({
 
     const account = verifyAdminCredentials(username, password);
     if (!account) {
+      const failedAttempt = recordFailedLoginAttempt(ip, username || "<empty>");
+      if (failedAttempt.locked) {
+        redirect(
+          `/login?error=locked&retry=${failedAttempt.retryAfterSeconds}&next=${encodeURIComponent(targetPath)}`
+        );
+      }
+
       redirect(`/login?error=1&next=${encodeURIComponent(targetPath)}`);
     }
 
+    resetFailedLoginAttempts(ip);
     await createAdminSession(account.username);
     redirect(targetPath);
   }
@@ -65,6 +88,16 @@ export default async function LoginPage({
         {params.error === "config" ? (
           <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
             Admin-Accounts sind nicht konfiguriert.
+          </p>
+        ) : null}
+
+        {params.error === "locked" ? (
+          <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Zu viele fehlgeschlagene Login-Versuche. Bitte warte
+            {" "}
+            <strong>{Math.max(1, Math.ceil(Number(params.retry ?? "60") / 60))} Minute(n)</strong>
+            {" "}
+            und versuche es dann erneut.
           </p>
         ) : null}
 

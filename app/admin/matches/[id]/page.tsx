@@ -7,7 +7,7 @@ import { getAdminSession } from "@/src/lib/auth";
 import { buildMatchStory } from "@/src/lib/matchStory";
 import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
-import { updateMatchMVP } from "./actions";
+import { deleteMatchById, updateMatchMVP } from "./actions";
 
 type TeamSide = "team_1" | "team_2";
 
@@ -67,7 +67,7 @@ export default async function MatchDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ success?: string; error?: string }>;
+  searchParams: Promise<{ success?: string; error?: string; deleteError?: string }>;
 }) {
   const routeParams = await params;
   const queryParams = await searchParams;
@@ -382,6 +382,28 @@ export default async function MatchDetailPage({
     }
   }
 
+  async function deleteMatch(formData: FormData) {
+    "use server";
+
+    const submittedMatchId = Number(formData.get("matchId"));
+    const confirmation = String(formData.get("confirmDelete") ?? "");
+
+    let targetPath = `/admin/matches/${routeParams.id}?deleteError=1`;
+
+    if (!Number.isInteger(submittedMatchId) || confirmation !== "yes") {
+      redirect(targetPath);
+    }
+
+    try {
+      await deleteMatchById(submittedMatchId);
+      targetPath = "/admin/matches";
+    } catch {
+      targetPath = `/admin/matches/${submittedMatchId}?deleteError=1`;
+    }
+
+    redirect(targetPath);
+  }
+
   const mvpName =
     match.mvpPlayerId !== null
       ? (playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`)
@@ -677,6 +699,35 @@ export default async function MatchDetailPage({
                   </form>
                 </>
               )}
+            </div>
+          ) : null}
+
+          {isAdmin ? (
+            <div className="mt-5 border-t border-zinc-800 pt-5">
+              <p className="mb-2 text-sm text-zinc-300">Spiel löschen</p>
+              {queryParams.deleteError === "1" ? (
+                <p className="mb-2 text-sm text-red-400">Spiel konnte nicht gelöscht werden.</p>
+              ) : null}
+
+              <form action={deleteMatch} className="flex flex-wrap items-center gap-3">
+                <input type="hidden" name="matchId" value={match.id} />
+                <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+                  <input
+                    type="checkbox"
+                    name="confirmDelete"
+                    value="yes"
+                    required
+                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-950"
+                  />
+                  Löschung bestätigen
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200 hover:border-red-600"
+                >
+                  Spiel löschen
+                </button>
+              </form>
             </div>
           ) : null}
         </section>
