@@ -3,6 +3,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 import { updateMatchMVP } from "./actions";
 
 type TeamSide = "team_1" | "team_2";
@@ -196,7 +197,7 @@ export default async function MatchDetailPage({
     }));
   }
 
-  const match = matchRows[0];
+  let match = matchRows[0];
 
   if (!match) {
     return (
@@ -206,6 +207,31 @@ export default async function MatchDetailPage({
         </section>
       </main>
     );
+  }
+
+  if (
+    weatherTableAvailable &&
+    match.weatherCondition === null &&
+    match.weatherTemperatureC === null &&
+    match.weatherFeelsLikeC === null &&
+    match.weatherPrecipMm === null &&
+    match.weatherWindKmh === null &&
+    match.weatherHumidityPct === null
+  ) {
+    try {
+      const weatherData = await ensureWeatherStoredForMatch(match.id, match.matchDate);
+      match = {
+        ...match,
+        weatherCondition: weatherData.conditionLabel,
+        weatherTemperatureC: weatherData.temperatureC,
+        weatherFeelsLikeC: weatherData.feelsLikeC,
+        weatherPrecipMm: weatherData.precipMm,
+        weatherWindKmh: weatherData.windKmh,
+        weatherHumidityPct: weatherData.humidityPct !== null ? Math.round(weatherData.humidityPct) : null,
+      };
+    } catch {
+      // Falls Wetter-Backfill fehlschlägt, bleibt die Seite trotzdem nutzbar.
+    }
   }
 
   const participantRows = await db

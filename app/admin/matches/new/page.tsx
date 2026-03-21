@@ -1,104 +1,7 @@
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { matches, matchWeather, seasons } from "@/src/db/schema";
-
-const HOLM_SEPPENSEN = {
-  latitude: 53.284654,
-  longitude: 9.869992,
-  timezone: "Europe/Berlin",
-};
-
-type OpenMeteoHourlyResponse = {
-  hourly?: {
-    time?: string[];
-    temperature_2m?: number[];
-    apparent_temperature?: number[];
-    precipitation?: number[];
-    wind_speed_10m?: number[];
-    relative_humidity_2m?: number[];
-    weather_code?: number[];
-  };
-};
-
-function weatherCodeToLabel(code: number | null) {
-  if (code === null) return null;
-  if (code === 0) return "Klar";
-  if (code >= 1 && code <= 3) return "Bewölkt";
-  if (code === 45 || code === 48) return "Nebel";
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "Regen";
-  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return "Schnee";
-  if (code >= 95) return "Gewitter";
-  return "Unbekannt";
-}
-
-function pickHourIndex(times: string[]) {
-  const preferredHour = 18;
-  const exactIndex = times.findIndex((time) => {
-    const hour = Number(time.split("T")[1]?.slice(0, 2));
-    return Number.isInteger(hour) && hour === preferredHour;
-  });
-
-  if (exactIndex !== -1) {
-    return exactIndex;
-  }
-
-  return Math.floor(times.length / 2);
-}
-
-async function fetchWeatherForMatchDate(matchDateIso: string) {
-  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
-  weatherUrl.searchParams.set("latitude", String(HOLM_SEPPENSEN.latitude));
-  weatherUrl.searchParams.set("longitude", String(HOLM_SEPPENSEN.longitude));
-  weatherUrl.searchParams.set("timezone", HOLM_SEPPENSEN.timezone);
-  weatherUrl.searchParams.set("start_date", matchDateIso);
-  weatherUrl.searchParams.set("end_date", matchDateIso);
-  weatherUrl.searchParams.set(
-    "hourly",
-    "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,relative_humidity_2m,weather_code"
-  );
-
-  const response = await fetch(weatherUrl.toString(), {
-    cache: "no-store",
-    signal: AbortSignal.timeout(7000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Open-Meteo Fehler: ${response.status}`);
-  }
-
-  const data = (await response.json()) as OpenMeteoHourlyResponse;
-  const times = data.hourly?.time ?? [];
-
-  if (times.length === 0) {
-    return {
-      temperatureC: null,
-      feelsLikeC: null,
-      conditionLabel: "Wetterdaten nicht verfügbar",
-      precipMm: null,
-      windKmh: null,
-      humidityPct: null,
-    };
-  }
-
-  const index = pickHourIndex(times);
-
-  const hourlyPrecip = data.hourly?.precipitation ?? [];
-  const precipMm =
-    hourlyPrecip.length > 0
-      ? hourlyPrecip.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
-      : null;
-
-  const weatherCodeAtHour = data.hourly?.weather_code?.[index] ?? null;
-
-  return {
-    temperatureC: data.hourly?.temperature_2m?.[index] ?? null,
-    feelsLikeC: data.hourly?.apparent_temperature?.[index] ?? null,
-    conditionLabel: weatherCodeToLabel(weatherCodeAtHour),
-    precipMm,
-    windKmh: data.hourly?.wind_speed_10m?.[index] ?? null,
-    humidityPct: data.hourly?.relative_humidity_2m?.[index] ?? null,
-  };
-}
+import { fetchWeatherForMatchDate, type WeatherSnapshot } from "@/src/lib/weather";
 
 export default async function NewMatchPage({
   searchParams,
@@ -127,14 +30,7 @@ export default async function NewMatchPage({
       redirect("/admin/matches/new?error=1");
     }
 
-    let weatherData: {
-      temperatureC: number | null;
-      feelsLikeC: number | null;
-      conditionLabel: string | null;
-      precipMm: number | null;
-      windKmh: number | null;
-      humidityPct: number | null;
-    } = {
+    let weatherData: WeatherSnapshot = {
       temperatureC: null,
       feelsLikeC: null,
       conditionLabel: "Wetterdaten nicht verfügbar",

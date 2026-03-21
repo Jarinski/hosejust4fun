@@ -2,8 +2,10 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 
 export default async function MatchesPage() {
+  let weatherTableAvailable = true;
   let allMatches: Array<{
     id: number;
     matchDate: Date;
@@ -35,6 +37,7 @@ export default async function MatchesPage() {
       .leftJoin(matchWeather, eq(matchWeather.matchId, matches.id))
       .orderBy(desc(matches.matchDate));
   } catch {
+    weatherTableAvailable = false;
     // Fallback for databases where the MVP migration has not yet been applied.
     const baseMatches = await db
       .select({
@@ -55,6 +58,33 @@ export default async function MatchesPage() {
       weatherTemperatureC: null,
       weatherPrecipMm: null,
     }));
+  }
+
+  if (weatherTableAvailable) {
+    allMatches = await Promise.all(
+      allMatches.map(async (match) => {
+        const hasWeatherData =
+          match.weatherCondition !== null ||
+          match.weatherTemperatureC !== null ||
+          match.weatherPrecipMm !== null;
+
+        if (hasWeatherData) {
+          return match;
+        }
+
+        try {
+          const weatherData = await ensureWeatherStoredForMatch(match.id, match.matchDate);
+          return {
+            ...match,
+            weatherCondition: weatherData.conditionLabel,
+            weatherTemperatureC: weatherData.temperatureC,
+            weatherPrecipMm: weatherData.precipMm,
+          };
+        } catch {
+          return match;
+        }
+      })
+    );
   }
 
   return (
