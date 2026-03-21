@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
+import { recalculateMatchMvp } from "@/src/lib/mvp";
 import { GoalsForm } from "./GoalsForm";
 
 type TeamSide = "team_1" | "team_2";
@@ -115,6 +116,7 @@ export default async function MatchGoalsPage({
     const rowsToInsert: Array<{
       matchId: number;
       teamSide: TeamSide;
+      isOwnGoal: boolean;
       scorerPlayerId: number;
       assistPlayerId?: number;
       minute?: number;
@@ -127,6 +129,9 @@ export default async function MatchGoalsPage({
         continue;
       }
 
+      const isOwnGoalRaw = String(formData.get(`row_${i}_isOwnGoal`) ?? "").trim();
+      const isOwnGoal = isOwnGoalRaw === "on";
+
       const teamSideRaw = String(formData.get(`row_${i}_teamSide`) ?? "").trim();
       if (teamSideRaw !== "team_1" && teamSideRaw !== "team_2") {
         redirect(`/admin/matches/${targetMatchId}/goals?error=validation`);
@@ -137,8 +142,13 @@ export default async function MatchGoalsPage({
         redirect(`/admin/matches/${targetMatchId}/goals?error=validation`);
       }
 
-      const validScorer =
-        teamSideRaw === "team_1" ? team1Ids.has(scorerPlayerId) : team2Ids.has(scorerPlayerId);
+      const validScorer = isOwnGoal
+        ? teamSideRaw === "team_1"
+          ? team2Ids.has(scorerPlayerId)
+          : team1Ids.has(scorerPlayerId)
+        : teamSideRaw === "team_1"
+          ? team1Ids.has(scorerPlayerId)
+          : team2Ids.has(scorerPlayerId);
 
       if (!validScorer) {
         redirect(`/admin/matches/${targetMatchId}/goals?error=validation`);
@@ -147,7 +157,7 @@ export default async function MatchGoalsPage({
       const assistRaw = String(formData.get(`row_${i}_assistPlayerId`) ?? "").trim();
       let assistPlayerId: number | undefined;
 
-      if (assistRaw) {
+      if (assistRaw && !isOwnGoal) {
         assistPlayerId = Number(assistRaw);
 
         if (!Number.isInteger(assistPlayerId) || assistPlayerId === scorerPlayerId) {
@@ -182,6 +192,7 @@ export default async function MatchGoalsPage({
       rowsToInsert.push({
         matchId: targetMatchId,
         teamSide: teamSideRaw,
+        isOwnGoal,
         scorerPlayerId,
         assistPlayerId,
         minute,
@@ -194,6 +205,8 @@ export default async function MatchGoalsPage({
     if (rowsToInsert.length > 0) {
       await db.insert(goalEvents).values(rowsToInsert);
     }
+
+    await recalculateMatchMvp(targetMatchId);
 
     redirect(`/admin/matches/${targetMatchId}/goals?success=1`);
   }

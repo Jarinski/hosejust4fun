@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matches, players, seasons } from "@/src/db/schema";
 
@@ -38,12 +38,13 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       goals: goalsCount.as("goals"),
     })
     .from(goalEvents)
-    .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id));
+    .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+    .where(eq(goalEvents.isOwnGoal, false));
 
   if (validSeasonId) {
     topScorersQuery = topScorersQuery
       .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(eq(matches.seasonId, validSeasonId));
+      .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)));
   }
 
   const topScorers = await topScorersQuery

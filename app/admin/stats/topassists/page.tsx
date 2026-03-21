@@ -39,12 +39,18 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     })
     .from(goalEvents)
     .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-    .where(isNotNull(goalEvents.assistPlayerId));
+    .where(and(isNotNull(goalEvents.assistPlayerId), eq(goalEvents.isOwnGoal, false)));
 
   if (validSeasonId) {
     topAssistsQuery = topAssistsQuery
       .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(and(isNotNull(goalEvents.assistPlayerId), eq(matches.seasonId, validSeasonId)));
+      .where(
+        and(
+          isNotNull(goalEvents.assistPlayerId),
+          eq(goalEvents.isOwnGoal, false),
+          eq(matches.seasonId, validSeasonId),
+        ),
+      );
   }
 
   const topAssists = await topAssistsQuery

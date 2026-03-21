@@ -48,7 +48,9 @@ export default async function ScorerAssistCombosPage({
     .from(goalEvents)
     .innerJoin(assisters, eq(goalEvents.assistPlayerId, assisters.id))
     .innerJoin(scorers, eq(goalEvents.scorerPlayerId, scorers.id))
-    .where(sql`${isNotNull(goalEvents.scorerPlayerId)} and ${isNotNull(goalEvents.assistPlayerId)}`);
+    .where(
+      sql`${isNotNull(goalEvents.scorerPlayerId)} and ${isNotNull(goalEvents.assistPlayerId)} and ${eq(goalEvents.isOwnGoal, false)}`,
+    );
 
   if (validSeasonId) {
     combosQuery = combosQuery
@@ -57,6 +59,7 @@ export default async function ScorerAssistCombosPage({
         and(
           isNotNull(goalEvents.scorerPlayerId),
           isNotNull(goalEvents.assistPlayerId),
+          eq(goalEvents.isOwnGoal, false),
           eq(matches.seasonId, validSeasonId),
         ),
       );

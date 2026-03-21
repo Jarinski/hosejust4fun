@@ -11,6 +11,7 @@ type PlayerOption = {
 
 type GoalRowState = {
   teamSide: "" | TeamSide;
+  isOwnGoal: boolean;
   scorerPlayerId: string;
   assistPlayerId: string;
   minute: string;
@@ -35,6 +36,7 @@ export function GoalsForm({
   const [rows, setRows] = useState<GoalRowState[]>(() =>
     Array.from({ length: rowCount }, () => ({
       teamSide: "",
+      isOwnGoal: false,
       scorerPlayerId: "",
       assistPlayerId: "",
       minute: "",
@@ -60,12 +62,16 @@ export function GoalsForm({
       <input type="hidden" name="rowCount" value={rowCount} />
 
       {rows.map((row, index) => {
-        const selectablePlayers = row.teamSide ? playersByTeam[row.teamSide] : [];
+        const selectablePlayers = row.teamSide
+          ? row.isOwnGoal
+            ? playersByTeam[row.teamSide === "team_1" ? "team_2" : "team_1"]
+            : playersByTeam[row.teamSide]
+          : [];
 
         return (
           <div
             key={index}
-            className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 md:grid-cols-5"
+            className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 md:grid-cols-6"
           >
             <label className="flex flex-col gap-1">
               <span className="text-xs text-zinc-400">Team</span>
@@ -79,6 +85,7 @@ export function GoalsForm({
                     teamSide,
                     scorerPlayerId: "",
                     assistPlayerId: "",
+                    isOwnGoal: false,
                   }));
                 }}
                 className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
@@ -90,7 +97,31 @@ export function GoalsForm({
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Torschütze</span>
+              <span className="text-xs text-zinc-400">Eigentor</span>
+              <div className="flex h-full items-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  name={`row_${index}_isOwnGoal`}
+                  checked={row.isOwnGoal}
+                  onChange={(event) => {
+                    const isOwnGoal = event.target.checked;
+                    updateRow(index, (current) => ({
+                      ...current,
+                      isOwnGoal,
+                      scorerPlayerId: "",
+                      assistPlayerId: "",
+                    }));
+                  }}
+                  disabled={!row.teamSide}
+                />
+                <span className="ml-2 text-zinc-300">Ja</span>
+              </div>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-400">
+                {row.isOwnGoal ? "Verursacher (Eigentor)" : "Torschütze"}
+              </span>
               <select
                 name={`row_${index}_scorerPlayerId`}
                 value={row.scorerPlayerId}
@@ -123,10 +154,10 @@ export function GoalsForm({
                 onChange={(event) => {
                   updateRow(index, (current) => ({
                     ...current,
-                    assistPlayerId: event.target.value,
+                    assistPlayerId: row.isOwnGoal ? "" : event.target.value,
                   }));
                 }}
-                disabled={!row.teamSide}
+                disabled={!row.teamSide || row.isOwnGoal}
                 className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm disabled:opacity-60"
               >
                 <option value="">-</option>

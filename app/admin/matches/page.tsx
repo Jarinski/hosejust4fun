@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/src/db";
-import { matches, players, seasons } from "@/src/db/schema";
+import { matches, matchWeather, players, seasons } from "@/src/db/schema";
 
 export default async function MatchesPage() {
   let allMatches: Array<{
@@ -11,6 +11,9 @@ export default async function MatchesPage() {
     team1Name: string;
     team2Name: string;
     mvpName: string | null;
+    weatherCondition: string | null;
+    weatherTemperatureC: number | null;
+    weatherPrecipMm: number | null;
   }> = [];
 
   try {
@@ -22,10 +25,14 @@ export default async function MatchesPage() {
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
         mvpName: players.name,
+        weatherCondition: matchWeather.conditionLabel,
+        weatherTemperatureC: matchWeather.temperatureC,
+        weatherPrecipMm: matchWeather.precipMm,
       })
       .from(matches)
       .leftJoin(seasons, eq(matches.seasonId, seasons.id))
       .leftJoin(players, eq(matches.mvpPlayerId, players.id))
+      .leftJoin(matchWeather, eq(matchWeather.matchId, matches.id))
       .orderBy(desc(matches.matchDate));
   } catch {
     // Fallback for databases where the MVP migration has not yet been applied.
@@ -44,6 +51,9 @@ export default async function MatchesPage() {
     allMatches = baseMatches.map((match) => ({
       ...match,
       mvpName: null,
+      weatherCondition: null,
+      weatherTemperatureC: null,
+      weatherPrecipMm: null,
     }));
   }
 
@@ -70,6 +80,7 @@ export default async function MatchesPage() {
                   <th className="px-4 py-3 text-left">Datum</th>
                   <th className="px-4 py-3 text-left">Saison</th>
                   <th className="px-4 py-3 text-left">Spiel</th>
+                  <th className="px-4 py-3 text-left">Wetter</th>
                   <th className="px-4 py-3 text-left">Aktionen</th>
                 </tr>
               </thead>
@@ -83,6 +94,20 @@ export default async function MatchesPage() {
                         {match.team1Name} vs {match.team2Name}
                       </p>
                       <p className="text-xs text-zinc-400">MVP: {match.mvpName ?? "—"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-300">
+                      {match.weatherCondition || match.weatherTemperatureC !== null || match.weatherPrecipMm !== null ? (
+                        <>
+                          <p>{match.weatherCondition ?? "Wetter erfasst"}</p>
+                          <p className="text-xs text-zinc-400">
+                            {match.weatherTemperatureC !== null ? `${match.weatherTemperatureC.toFixed(1)}°C` : "—"}
+                            {" · "}
+                            {match.weatherPrecipMm !== null ? `${match.weatherPrecipMm.toFixed(1)} mm` : "kein Niederschlag"}
+                          </p>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">

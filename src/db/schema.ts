@@ -62,6 +62,7 @@ export const goalEvents = pgTable("goal_events", {
     .notNull()
     .references(() => matches.id),
   teamSide: teamSideEnum("team_side").notNull(),
+  isOwnGoal: boolean("is_own_goal").notNull().default(false),
   goalType: text("goal_type"),
   scorerPlayerId: integer("scorer_player_id")
     .notNull()

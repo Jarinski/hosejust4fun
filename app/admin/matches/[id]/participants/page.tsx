@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { matchParticipants, matches, players } from "@/src/db/schema";
+import { recalculateMatchMvp } from "@/src/lib/mvp";
 
 export default async function MatchParticipantsPage({
   params,
@@ -115,6 +116,8 @@ export default async function MatchParticipantsPage({
       if (rowsToInsert.length > 0) {
         await db.insert(matchParticipants).values(rowsToInsert);
       }
+
+      await recalculateMatchMvp(targetMatchId);
 
       redirect(`/admin/matches/${targetMatchId}/participants?success=1`);
     } catch {

@@ -2,56 +2,111 @@ import Link from "next/link";
 import { asc, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
+import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { updateMatchMVP } from "./actions";
 
 type TeamSide = "team_1" | "team_2";
 
-function getMatchSummaryText({
-  team1Name,
-  team2Name,
+type GoalEventView = {
+  id: number;
+  teamSide: TeamSide;
+  isOwnGoal: boolean;
+  scorerPlayerId: number;
+  assistPlayerId: number | null;
+  minute: number | null;
+  goalType: string | null;
+  createdAt: Date | null;
+};
+
+function sortGoalsForTimeline(goals: GoalEventView[]) {
+  return [...goals].sort((a, b) => {
+    if (a.minute !== null && b.minute !== null && a.minute !== b.minute) {
+      return a.minute - b.minute;
+    }
+
+    if (a.minute !== null && b.minute === null) {
+      return -1;
+    }
+
+    if (a.minute === null && b.minute !== null) {
+      return 1;
+    }
+
+    const aCreatedAt = a.createdAt ? a.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+    const bCreatedAt = b.createdAt ? b.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+
+    if (aCreatedAt !== bCreatedAt) {
+      return aCreatedAt - bCreatedAt;
+    }
+
+    return a.id - b.id;
+  });
+}
+
+function buildMatchInsights({
+  sortedGoals,
+  playerNameById,
+  mvpPlayerId,
   team1Goals,
   team2Goals,
-  totalGoals,
-  leadChanges,
-  cameFromBehind,
 }: {
-  team1Name: string;
-  team2Name: string;
+  sortedGoals: GoalEventView[];
+  playerNameById: Map<number, string>;
+  mvpPlayerId: number | null;
   team1Goals: number;
   team2Goals: number;
-  totalGoals: number;
-  leadChanges: number;
-  cameFromBehind: boolean;
 }) {
-  const winnerName =
-    team1Goals > team2Goals ? team1Name : team2Goals > team1Goals ? team2Name : null;
+  const insights: string[] = [];
+  const totalGoals = team1Goals + team2Goals;
+  const ownGoals = sortedGoals.filter((goal) => goal.isOwnGoal).length;
+
+  const goalsByScorer = new Map<number, number>();
+
+  for (const goal of sortedGoals) {
+    if (goal.isOwnGoal) continue;
+    goalsByScorer.set(goal.scorerPlayerId, (goalsByScorer.get(goal.scorerPlayerId) ?? 0) + 1);
+  }
+
+  const scorersByGoals = [...goalsByScorer.entries()].sort((a, b) => b[1] - a[1]);
+  const hattricks = scorersByGoals.filter(([, goals]) => goals >= 3);
+  const doublePacks = scorersByGoals.filter(([, goals]) => goals >= 2);
+
+  if (hattricks.length > 0) {
+    const [playerId, goals] = hattricks[0];
+    const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
+    insights.push(`🎩 Hattrick: ${name} traf ${goals}-mal.`);
+  } else if (doublePacks.length > 0) {
+    const [playerId, goals] = doublePacks[0];
+    const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
+    insights.push(`⚽ Doppelpack: ${name} traf ${goals}-mal.`);
+  }
+
+  if (mvpPlayerId !== null) {
+    insights.push(`🏆 MVP des Spiels: ${playerNameById.get(mvpPlayerId) ?? `Spieler #${mvpPlayerId}`}.`);
+  }
+
+  if (totalGoals >= 8) {
+    insights.push(`🔥 Torfestival mit ${totalGoals} Treffern.`);
+  }
+
   const margin = Math.abs(team1Goals - team2Goals);
+  if (margin === 0) {
+    insights.push("🤝 Punkteteilung in einem ausgeglichenen Duell.");
+  } else if (margin === 1) {
+    insights.push("🧨 Knapper Sieg mit nur einem Tor Unterschied.");
+  } else if (margin >= 3) {
+    insights.push(`📈 Deutlicher Sieg mit ${margin} Toren Vorsprung.`);
+  }
 
-  const opening = winnerName
-    ? `${winnerName} gewinnt mit ${team1Goals}:${team2Goals}.`
-    : `Das Spiel endet ${team1Goals}:${team2Goals} unentschieden.`;
+  if (ownGoals > 0) {
+    insights.push(
+      ownGoals === 1
+        ? "📉 Ein Eigentor beeinflusste den Spielverlauf."
+        : `📉 ${ownGoals} Eigentore beeinflussten den Spielverlauf.`
+    );
+  }
 
-  const tempo =
-    totalGoals >= 8
-      ? "Ein echtes Torfestival mit viel Offensivpower auf beiden Seiten."
-      : totalGoals <= 3
-        ? "Eine eher kontrollierte Partie mit wenigen klaren Abschlüssen."
-        : "Ein intensives Spiel mit mehreren starken Offensivmomenten.";
-
-  const drama =
-    leadChanges >= 2
-      ? `Mit ${leadChanges} Führungswechseln war durchgehend Spannung drin.`
-      : leadChanges === 1
-        ? "Die Führung wechselte einmal – danach blieb es bis zum Schluss eng."
-        : margin >= 3
-          ? "Der Sieger konnte sich früh absetzen und den Vorsprung souverän verwalten."
-          : "Lange offen, mit Entscheidung in den entscheidenden Szenen.";
-
-  const comeback = cameFromBehind
-    ? "Bemerkenswert: Der Sieger lag zuerst hinten und drehte das Spiel." : "";
-
-  return [opening, tempo, drama, comeback].filter(Boolean).join(" ");
+  return insights;
 }
 
 export default async function MatchDetailPage({
@@ -76,12 +131,20 @@ export default async function MatchDetailPage({
   }
 
   let mvpColumnAvailable = true;
+  let weatherTableAvailable = true;
   let matchRows: Array<{
     id: number;
     matchDate: Date;
+    seasonName: string | null;
     team1Name: string;
     team2Name: string;
     mvpPlayerId: number | null;
+    weatherCondition: string | null;
+    weatherTemperatureC: number | null;
+    weatherFeelsLikeC: number | null;
+    weatherPrecipMm: number | null;
+    weatherWindKmh: number | null;
+    weatherHumidityPct: number | null;
   }> = [];
 
   try {
@@ -89,29 +152,47 @@ export default async function MatchDetailPage({
       .select({
         id: matches.id,
         matchDate: matches.matchDate,
+        seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
         mvpPlayerId: matches.mvpPlayerId,
+        weatherCondition: matchWeather.conditionLabel,
+        weatherTemperatureC: matchWeather.temperatureC,
+        weatherFeelsLikeC: matchWeather.feelsLikeC,
+        weatherPrecipMm: matchWeather.precipMm,
+        weatherWindKmh: matchWeather.windKmh,
+        weatherHumidityPct: matchWeather.humidityPct,
       })
       .from(matches)
+      .leftJoin(seasons, eq(matches.seasonId, seasons.id))
+      .leftJoin(matchWeather, eq(matchWeather.matchId, matches.id))
       .where(eq(matches.id, matchId))
       .limit(1);
   } catch {
     mvpColumnAvailable = false;
+    weatherTableAvailable = false;
     const baseMatchRows = await db
       .select({
         id: matches.id,
         matchDate: matches.matchDate,
+        seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
       })
       .from(matches)
+      .leftJoin(seasons, eq(matches.seasonId, seasons.id))
       .where(eq(matches.id, matchId))
       .limit(1);
 
     matchRows = baseMatchRows.map((match) => ({
       ...match,
       mvpPlayerId: null,
+      weatherCondition: null,
+      weatherTemperatureC: null,
+      weatherFeelsLikeC: null,
+      weatherPrecipMm: null,
+      weatherWindKmh: null,
+      weatherHumidityPct: null,
     }));
   }
 
@@ -139,18 +220,44 @@ export default async function MatchDetailPage({
     .where(eq(matchParticipants.matchId, matchId))
     .orderBy(asc(players.name));
 
-  const goalRows = await db
-    .select({
-      id: goalEvents.id,
-      teamSide: goalEvents.teamSide,
-      scorerPlayerId: goalEvents.scorerPlayerId,
-      assistPlayerId: goalEvents.assistPlayerId,
-      minute: goalEvents.minute,
-      goalType: goalEvents.goalType,
-      createdAt: goalEvents.createdAt,
-    })
-    .from(goalEvents)
-    .where(eq(goalEvents.matchId, matchId));
+  let ownGoalColumnAvailable = true;
+  let goalRows: GoalEventView[] = [];
+
+  try {
+    goalRows = await db
+      .select({
+        id: goalEvents.id,
+        teamSide: goalEvents.teamSide,
+        isOwnGoal: goalEvents.isOwnGoal,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .where(eq(goalEvents.matchId, matchId));
+  } catch {
+    ownGoalColumnAvailable = false;
+
+    const baseGoalRows = await db
+      .select({
+        id: goalEvents.id,
+        teamSide: goalEvents.teamSide,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .where(eq(goalEvents.matchId, matchId));
+
+    goalRows = baseGoalRows.map((goal) => ({
+      ...goal,
+      isOwnGoal: false,
+    }));
+  }
 
   const involvedPlayerIds = Array.from(
     new Set(
@@ -178,11 +285,55 @@ export default async function MatchDetailPage({
     playerNameById.set(player.id, player.name);
   }
 
+  const sortedGoals = sortGoalsForTimeline(goalRows);
+
   const team1Participants = participantRows.filter((row) => row.teamSide === "team_1");
   const team2Participants = participantRows.filter((row) => row.teamSide === "team_2");
 
-  const team1Goals = goalRows.filter((goal) => goal.teamSide === "team_1").length;
-  const team2Goals = goalRows.filter((goal) => goal.teamSide === "team_2").length;
+  const team1Goals = sortedGoals.filter((goal) => goal.teamSide === "team_1").length;
+  const team2Goals = sortedGoals.filter((goal) => goal.teamSide === "team_2").length;
+  const totalGoals = team1Goals + team2Goals;
+
+  const ownGoalsCount = sortedGoals.filter((goal) => goal.isOwnGoal).length;
+  const assistsCount = sortedGoals.filter((goal) => !goal.isOwnGoal && goal.assistPlayerId !== null).length;
+
+  const goalsByPlayerId = new Map<number, number>();
+  const assistsByPlayerId = new Map<number, number>();
+
+  for (const goal of sortedGoals) {
+    if (!goal.isOwnGoal) {
+      goalsByPlayerId.set(goal.scorerPlayerId, (goalsByPlayerId.get(goal.scorerPlayerId) ?? 0) + 1);
+    }
+    if (!goal.isOwnGoal && goal.assistPlayerId !== null) {
+      assistsByPlayerId.set(goal.assistPlayerId, (assistsByPlayerId.get(goal.assistPlayerId) ?? 0) + 1);
+    }
+  }
+
+  const timelineState = sortedGoals.reduce(
+    (acc, goal) => {
+      const team1 = acc.team1 + (goal.teamSide === "team_1" ? 1 : 0);
+      const team2 = acc.team2 + (goal.teamSide === "team_2" ? 1 : 0);
+
+      return {
+        team1,
+        team2,
+        goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}` }],
+      };
+    },
+    {
+      team1: 0,
+      team2: 0,
+      goals: [] as Array<GoalEventView & { scoreAfterGoal: string }>,
+    }
+  );
+
+  const insights = buildMatchInsights({
+    sortedGoals,
+    playerNameById,
+    mvpPlayerId: match.mvpPlayerId,
+    team1Goals,
+    team2Goals,
+  });
 
   async function saveMVP(formData: FormData) {
     "use server";
@@ -207,267 +358,290 @@ export default async function MatchDetailPage({
     }
   }
 
-  const sortedGoals = [...goalRows].sort((a, b) => {
-    if (a.minute !== null && b.minute !== null && a.minute !== b.minute) {
-      return a.minute - b.minute;
-    }
-
-    if (a.minute !== null && b.minute === null) {
-      return -1;
-    }
-
-    if (a.minute === null && b.minute !== null) {
-      return 1;
-    }
-
-    const aCreatedAt = a.createdAt ? a.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
-    const bCreatedAt = b.createdAt ? b.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
-
-    if (aCreatedAt !== bCreatedAt) {
-      return aCreatedAt - bCreatedAt;
-    }
-
-    return a.id - b.id;
-  });
-
-  const totalGoals = team1Goals + team2Goals;
-
-  const goalsByScorer = new Map<string, number>();
-  const assistsTotal = sortedGoals.filter((goal) => goal.assistPlayerId !== null).length;
-
-  for (const goal of sortedGoals) {
-    const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
-    goalsByScorer.set(scorerName, (goalsByScorer.get(scorerName) ?? 0) + 1);
-  }
-
-  const topScorerEntry = [...goalsByScorer.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
-
-  const firstScoringTeam = sortedGoals[0]?.teamSide ?? null;
-
-  const timelineState = sortedGoals.reduce(
-    (acc, goal) => {
-      const team1 = acc.team1 + (goal.teamSide === "team_1" ? 1 : 0);
-      const team2 = acc.team2 + (goal.teamSide === "team_2" ? 1 : 0);
-
-      const leader: TeamSide | null = team1 > team2 ? "team_1" : team2 > team1 ? "team_2" : null;
-
-      const leadChanges =
-        acc.previousLeader && leader && acc.previousLeader !== leader
-          ? acc.leadChanges + 1
-          : acc.leadChanges;
-
-      return {
-        team1,
-        team2,
-        previousLeader: leader,
-        leadChanges,
-        goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}` }],
-      };
-    },
-    {
-      team1: 0,
-      team2: 0,
-      previousLeader: null as TeamSide | null,
-      leadChanges: 0,
-      goals: [] as Array<(typeof sortedGoals)[number] & { scoreAfterGoal: string }>,
-    }
-  );
-
-  const leadChanges = timelineState.leadChanges;
-  const timelineGoals = timelineState.goals;
-
-  const winnerSide: TeamSide | null =
-    team1Goals > team2Goals ? "team_1" : team2Goals > team1Goals ? "team_2" : null;
-  const cameFromBehind = Boolean(winnerSide && firstScoringTeam && winnerSide !== firstScoringTeam);
-
-  const insights: string[] = [];
-
-  if (topScorerEntry) {
-    if (topScorerEntry[1] >= 3) {
-      insights.push(`🎩 Hattrick von ${topScorerEntry[0]} (${topScorerEntry[1]} Tore).`);
-    } else if (topScorerEntry[1] >= 2) {
-      insights.push(`⚽ Doppelpack von ${topScorerEntry[0]} (${topScorerEntry[1]} Tore).`);
-    }
-  }
-
-  if (totalGoals >= 8) {
-    insights.push(`🔥 Offensivfeuerwerk mit ${totalGoals} Toren.`);
-  } else if (totalGoals <= 3) {
-    insights.push(`🧱 Defensiv geprägte Partie mit nur ${totalGoals} Treffern.`);
-  }
-
-  if (assistsTotal === 0 && totalGoals > 0) {
-    insights.push("🎯 Alle Tore entstanden ohne direkte Vorlage.");
-  } else if (totalGoals > 0 && assistsTotal / totalGoals >= 0.7) {
-    insights.push(`🤝 Starkes Kombinationsspiel: ${assistsTotal} von ${totalGoals} Toren mit Assist.`);
-  }
-
-  if (leadChanges >= 2) {
-    insights.push(`🔄 ${leadChanges} Führungswechsel – pure Spannung.`);
-  }
-
-  if (cameFromBehind && winnerSide) {
-    const winnerName = winnerSide === "team_1" ? match.team1Name : match.team2Name;
-    insights.push(`📈 Starke Moral: ${winnerName} drehte das Spiel nach frühem Rückstand.`);
-  }
-
-  if (match.mvpPlayerId !== null) {
-    insights.push(`🏆 MVP: ${playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`}.`);
-  }
-
-  const summaryText = getMatchSummaryText({
-    team1Name: match.team1Name,
-    team2Name: match.team2Name,
-    team1Goals,
-    team2Goals,
-    totalGoals,
-    leadChanges,
-    cameFromBehind,
-  });
+  const mvpName =
+    match.mvpPlayerId !== null
+      ? (playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`)
+      : "Noch kein MVP gewählt";
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <p className="mb-4 text-sm text-zinc-300">
-        <Link href="/admin/matches" className="hover:text-white">← Zurück zur Match-Liste</Link>
-      </p>
-
-      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-        <p className="text-xs uppercase tracking-[0.14em] text-zinc-400">Match Insight</p>
-        <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
-          {match.team1Name} <span className="text-red-400">{team1Goals}:{team2Goals}</span> {match.team2Name}
-        </h1>
-        <p className="mt-2 text-sm text-zinc-300">{match.matchDate.toLocaleDateString("de-DE")}</p>
-        <p className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm leading-relaxed text-zinc-200">
-          {summaryText}
-        </p>
-      </section>
-
-      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-        <h2 className="mb-3 text-lg font-semibold">Insights</h2>
-        {insights.length === 0 ? (
-          <p className="text-sm text-zinc-400">Noch keine Insights verfügbar.</p>
-        ) : (
-          <ul className="space-y-2 text-sm">
-            {insights.slice(0, 5).map((insight, index) => (
-              <li key={`${insight}-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-                {insight}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-        <h2 className="mb-2 font-semibold">MVP</h2>
-        <p className="mb-3 text-zinc-200">
-          {match.mvpPlayerId !== null
-            ? `MVP: ${playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`} 🏆`
-            : "Kein MVP vergeben"}
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <p className="text-sm text-zinc-300">
+          <Link href="/admin/matches" className="hover:text-white">← Zurück zur Match-Übersicht</Link>
         </p>
 
-        {!mvpColumnAvailable ? (
-          <p className="mb-3 text-sm text-amber-300">
-            MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).
-          </p>
-        ) : null}
+        <section className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-6 shadow-2xl shadow-black/30 sm:p-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Matchcenter</p>
 
-        {queryParams.success === "1" ? (
-          <p className="mb-3 text-green-400">MVP wurde gespeichert.</p>
-        ) : null}
+          <div className="mt-5 grid items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Team 1</p>
+              <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">{match.team1Name}</h1>
+            </div>
 
-        {queryParams.error === "1" ? (
-          <p className="mb-3 text-red-400">MVP konnte nicht gespeichert werden.</p>
-        ) : null}
+            <div className="text-center">
+              <p className="text-5xl font-black leading-none text-red-400 sm:text-7xl">
+                {team1Goals} : {team2Goals}
+              </p>
+              <p className="mt-3 text-xs uppercase tracking-[0.18em] text-zinc-500">Endstand</p>
+            </div>
 
-        {mvpColumnAvailable ? (
-          <form action={saveMVP} className="flex flex-col gap-3 max-w-md">
-            <input type="hidden" name="matchId" value={matchId} />
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-zinc-300">MVP auswählen</span>
-              <select
-                name="mvpPlayerId"
-                defaultValue={match.mvpPlayerId !== null ? String(match.mvpPlayerId) : ""}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-              >
-                <option value="">Kein MVP</option>
-                {participantRows.map((participant) => (
-                  <option key={participant.playerId} value={participant.playerId}>
-                    {participant.playerName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+            <div className="md:text-right">
+              <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Team 2</p>
+              <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">{match.team2Name}</h2>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-zinc-800 pt-5">
+            <p className="text-sm text-zinc-300">
+              {match.matchDate.toLocaleDateString("de-DE")} · {match.seasonName ?? "Keine Saison"}
+            </p>
+            <p className="mt-2 text-base font-medium text-zinc-100">🏆 MVP: {mvpName}</p>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <h2 className="mb-4 text-lg font-semibold">Wetter</h2>
+
+          {!weatherTableAvailable ? (
+            <p className="text-sm text-amber-300">Wetterdaten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Bedingung</p>
+                <p className="mt-1 text-base font-semibold">{match.weatherCondition ?? "—"}</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Temperatur</p>
+                <p className="mt-1 text-base font-semibold">
+                  {match.weatherTemperatureC !== null ? `${match.weatherTemperatureC.toFixed(1)}°C` : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Gefühlt</p>
+                <p className="mt-1 text-base font-semibold">
+                  {match.weatherFeelsLikeC !== null ? `${match.weatherFeelsLikeC.toFixed(1)}°C` : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Niederschlag</p>
+                <p className="mt-1 text-base font-semibold">
+                  {match.weatherPrecipMm !== null ? `${match.weatherPrecipMm.toFixed(1)} mm` : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Wind</p>
+                <p className="mt-1 text-base font-semibold">
+                  {match.weatherWindKmh !== null ? `${match.weatherWindKmh.toFixed(1)} km/h` : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-zinc-400">Luftfeuchtigkeit</p>
+                <p className="mt-1 text-base font-semibold">
+                  {match.weatherHumidityPct !== null ? `${match.weatherHumidityPct}%` : "—"}
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <h2 className="mb-3 text-lg font-semibold">Spiel-Insights</h2>
+          {insights.length === 0 ? (
+            <p className="text-sm text-zinc-400">Noch keine Insights verfügbar.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {insights.map((insight, index) => (
+                <li key={`${insight}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5">
+                  {insight}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <h2 className="mb-5 text-lg font-semibold">Spielverlauf</h2>
+
+          {timelineState.goals.length === 0 ? (
+            <p className="text-sm text-zinc-400">Keine Tore erfasst.</p>
+          ) : (
+            <ul className="relative space-y-4 pl-5 before:absolute before:bottom-1 before:left-[10px] before:top-1 before:w-px before:bg-zinc-700">
+              {timelineState.goals.map((goal) => {
+                const teamName = goal.teamSide === "team_1" ? match.team1Name : match.team2Name;
+                const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+                const assistName =
+                  !goal.isOwnGoal && goal.assistPlayerId !== null
+                    ? (playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`)
+                    : null;
+                const isTeam1 = goal.teamSide === "team_1";
+
+                return (
+                  <li key={goal.id} className="relative">
+                    <span className="absolute left-[-14px] top-5 h-2.5 w-2.5 rounded-full bg-red-400" />
+
+                    <article
+                      className={`rounded-xl border px-4 py-3 ${
+                        isTeam1
+                          ? "border-sky-800 bg-sky-950/20"
+                          : "border-red-800 bg-red-950/20"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-zinc-100">
+                          {goal.minute !== null ? `${goal.minute}'` : "—"} · {teamName}
+                        </p>
+                        <p className="text-xs text-zinc-400">Zwischenstand {goal.scoreAfterGoal}</p>
+                      </div>
+
+                      <p className="mt-2 text-sm text-zinc-200">
+                        {goal.isOwnGoal ? (
+                          <>
+                            ⚽ <span className="font-medium text-red-300">Eigentor</span> ({scorerName})
+                          </>
+                        ) : (
+                          <>
+                            ⚽ <span className="font-medium text-zinc-100">{scorerName}</span>
+                            {assistName ? <span className="text-zinc-300"> (Assist: {assistName})</span> : null}
+                          </>
+                        )}
+                        {goal.goalType ? <span className="text-zinc-500"> · {goal.goalType}</span> : null}
+                      </p>
+                    </article>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {[{ name: match.team1Name, rows: team1Participants }, { name: match.team2Name, rows: team2Participants }].map(
+            (team) => (
+              <article key={team.name} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                <h2 className="mb-4 text-lg font-semibold">{team.name}</h2>
+                {team.rows.length === 0 ? (
+                  <p className="text-sm text-zinc-400">Keine Teilnehmer erfasst.</p>
+                ) : (
+                  <ul className="space-y-2 text-sm">
+                    {team.rows.map((participant) => {
+                      const goals = goalsByPlayerId.get(participant.playerId) ?? 0;
+                      const assists = assistsByPlayerId.get(participant.playerId) ?? 0;
+                      const isMvp = match.mvpPlayerId === participant.playerId;
+
+                      return (
+                        <li
+                          key={participant.id}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+                        >
+                          <span>{participant.playerName}</span>
+                          <span className="text-zinc-300">
+                            {goals > 0 ? `⚽${goals}` : ""}
+                            {assists > 0 ? ` ${assists === 1 ? "🅰️" : `🅰️${assists}`}` : ""}
+                            {isMvp ? " 🏆" : ""}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </article>
+            )
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <h2 className="mb-4 text-lg font-semibold">Match-Zusammenfassung</h2>
+
+          {!ownGoalColumnAvailable ? (
+            <p className="mb-3 text-sm text-amber-300">
+              Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).
+            </p>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-zinc-400">Tore gesamt</p>
+              <p className="mt-1 text-xl font-semibold">{totalGoals}</p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-zinc-400">Assists</p>
+              <p className="mt-1 text-xl font-semibold">{assistsCount}</p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-zinc-400">Eigentore</p>
+              <p className="mt-1 text-xl font-semibold">{ownGoalsCount}</p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-zinc-400">{match.team1Name}</p>
+              <p className="mt-1 text-xl font-semibold">{team1Goals}</p>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <p className="text-zinc-400">{match.team2Name}</p>
+              <p className="mt-1 text-xl font-semibold">{team2Goals}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <h2 className="mb-3 text-lg font-semibold">Aktionen</h2>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <Link
+              href={`/admin/matches/${match.id}/goals`}
+              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
             >
-              Speichern
-            </button>
-          </form>
-        ) : null}
-      </section>
+              Tore bearbeiten
+            </Link>
+            <Link
+              href={`/admin/matches/${match.id}/participants`}
+              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+            >
+              Teilnehmer bearbeiten
+            </Link>
+            <Link
+              href="/admin/matches"
+              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+            >
+              Zurück zur Übersicht
+            </Link>
+          </div>
 
-      <section className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-          <h2 className="mb-2 font-medium">{match.team1Name}</h2>
-          <ul className="list-disc pl-5 text-zinc-200">
-            {team1Participants.length === 0 ? <li>Keine Spieler</li> : null}
-            {team1Participants.map((participant) => (
-              <li key={participant.id}>{participant.playerName}</li>
-            ))}
-          </ul>
-        </div>
+          <div className="mt-5 border-t border-zinc-800 pt-5">
+            <p className="mb-2 text-sm text-zinc-300">MVP verwalten</p>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-          <h2 className="mb-2 font-medium">{match.team2Name}</h2>
-          <ul className="list-disc pl-5 text-zinc-200">
-            {team2Participants.length === 0 ? <li>Keine Spieler</li> : null}
-            {team2Participants.map((participant) => (
-              <li key={participant.id}>{participant.playerName}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
+            {!mvpColumnAvailable ? (
+              <p className="text-sm text-amber-300">MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
+            ) : (
+              <>
+                {queryParams.success === "1" ? <p className="mb-2 text-sm text-green-400">MVP wurde gespeichert.</p> : null}
+                {queryParams.error === "1" ? <p className="mb-2 text-sm text-red-400">MVP konnte nicht gespeichert werden.</p> : null}
 
-      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-        <div className="mb-4 flex flex-wrap gap-3 text-sm">
-          <Link
-            href={`/admin/matches/${match.id}/participants`}
-            className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 hover:border-zinc-500"
-          >
-            Teilnehmer bearbeiten
-          </Link>
-          <Link
-            href={`/admin/matches/${match.id}/goals`}
-            className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 hover:border-zinc-500"
-          >
-            Tore bearbeiten
-          </Link>
-        </div>
-
-        <h2 className="mb-2 font-medium">Tor-Timeline</h2>
-        <ul className="space-y-2 text-sm">
-          {timelineGoals.length === 0 ? <li className="text-zinc-400">Keine Tore erfasst.</li> : null}
-          {timelineGoals.map((goal) => {
-            const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
-            const assistName =
-              goal.assistPlayerId !== null
-                ? (playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`)
-                : null;
-            const teamName = goal.teamSide === "team_1" ? match.team1Name : match.team2Name;
-
-            return (
-              <li key={goal.id} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-                <span className="font-semibold text-red-300">{goal.minute !== null ? `${goal.minute}'. ` : "• "}</span>
-                {teamName}: <span className="font-medium text-zinc-100">{scorerName}</span>
-                {assistName ? ` (Vorlage: ${assistName})` : ""}
-                {goal.goalType ? ` [${goal.goalType}]` : ""}
-                <span className="ml-2 text-zinc-400">Zwischenstand {goal.scoreAfterGoal}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+                <form action={saveMVP} className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-center">
+                  <input type="hidden" name="matchId" value={match.id} />
+                  <select
+                    name="mvpPlayerId"
+                    defaultValue={match.mvpPlayerId !== null ? String(match.mvpPlayerId) : ""}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  >
+                    <option value="">Kein MVP</option>
+                    {participantRows.map((participant) => (
+                      <option key={participant.playerId} value={participant.playerId}>
+                        {participant.playerName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+                  >
+                    Speichern
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

@@ -26,6 +26,11 @@ const statsPages = [
     href: "/admin/stats/trio-performance",
     description: "Wie gut 3 Spieler zusammen performen",
   },
+  {
+    title: "Gegentor-Statistik",
+    href: "/admin/stats/goals-against",
+    description: "Wer kassiert die meisten Gegentore pro Spiel und welche Team-Kombis sind anfällig",
+  },
 ] as const;
 
 export default function StatsOverviewPage() {
