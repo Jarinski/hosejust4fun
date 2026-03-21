@@ -5,6 +5,7 @@ import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
 import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
+import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 import { updateMatchMVP } from "./actions";
 
 type TeamSide = "team_1" | "team_2";
@@ -19,6 +20,21 @@ type GoalEventView = {
   goalType: string | null;
   createdAt: Date | null;
 };
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybePgError = error as { code?: string; message?: string };
+
+  // PostgreSQL: undefined_column
+  if (maybePgError.code === "42703") {
+    return true;
+  }
+
+  return typeof maybePgError.message === "string" && maybePgError.message.includes(columnName);
+}
 
 function sortGoalsForTimeline(goals: GoalEventView[]) {
   return [...goals].sort((a, b) => {
@@ -198,7 +214,11 @@ export default async function MatchDetailPage({
       })
       .from(goalEvents)
       .where(eq(goalEvents.matchId, matchId));
-  } catch {
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
     ownGoalColumnAvailable = false;
 
     const baseGoalRows = await db
@@ -365,6 +385,13 @@ export default async function MatchDetailPage({
       ? (playerNameById.get(match.mvpPlayerId) ?? `Spieler #${match.mvpPlayerId}`)
       : "Noch kein MVP gewählt";
 
+  const weatherPresentation = getWeatherPresentation({
+    conditionLabel: match.weatherCondition,
+    temperatureC: match.weatherTemperatureC,
+    precipMm: match.weatherPrecipMm,
+    windKmh: match.weatherWindKmh,
+  });
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
       <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -411,7 +438,9 @@ export default async function MatchDetailPage({
             <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                 <p className="text-zinc-400">Bedingung</p>
-                <p className="mt-1 text-base font-semibold">{match.weatherCondition ?? "—"}</p>
+                <p className={`mt-1 text-base font-semibold ${weatherPresentation.className}`}>
+                  {weatherPresentation.icon} {weatherPresentation.label}
+                </p>
               </div>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                 <p className="text-zinc-400">Temperatur</p>

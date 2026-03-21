@@ -8,6 +8,7 @@ import {
   matchWeather,
   players,
 } from "@/src/db/schema";
+import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
 type WeatherMatchRow = {
   matchId: number;
@@ -67,12 +68,11 @@ type RankingRow = {
   perGame: string;
 };
 
-const RAIN_CONDITION_REGEX = /(regen|rain|drizzle|schauer|niesel|gewitter)/i;
-
 function isRainMatch(match: WeatherMatchRow) {
-  const hasPrecipitation = (match.precipMm ?? 0) > 0;
-  const hasRainLabel = RAIN_CONDITION_REGEX.test(match.conditionLabel ?? "");
-  return hasPrecipitation || hasRainLabel;
+  return isRainLikeWeather({
+    conditionLabel: match.conditionLabel,
+    precipMm: match.precipMm,
+  });
 }
 
 function countGamesByPlayer(participants: ParticipantRow[]) {
@@ -183,7 +183,26 @@ export default async function WeatherStatsPage() {
     .filter((match) => isRainMatch(match) || (match.temperatureC !== null && match.temperatureC < 10))
     .map((match) => match.matchId);
 
-  const [coldParticipants, rainParticipants, badWeatherParticipants, coldGoals, rainGoals] =
+  const sunnyMatchIds = weatherMatches
+    .filter(
+      (match) =>
+        isSunnyLikeWeather({
+          conditionLabel: match.conditionLabel,
+          precipMm: match.precipMm,
+          temperatureC: match.temperatureC,
+        }),
+    )
+    .map((match) => match.matchId);
+
+  const [
+    coldParticipants,
+    rainParticipants,
+    badWeatherParticipants,
+    sunnyParticipants,
+    coldGoals,
+    rainGoals,
+    sunnyGoals,
+  ] =
     await Promise.all([
       coldMatchIds.length
         ? db
@@ -212,8 +231,18 @@ export default async function WeatherStatsPage() {
             .from(matchParticipants)
             .where(inArray(matchParticipants.matchId, badWeatherMatchIds))
         : Promise.resolve([] as ParticipantRow[]),
+      sunnyMatchIds.length
+        ? db
+            .select({
+              matchId: matchParticipants.matchId,
+              playerId: matchParticipants.playerId,
+            })
+            .from(matchParticipants)
+            .where(inArray(matchParticipants.matchId, sunnyMatchIds))
+        : Promise.resolve([] as ParticipantRow[]),
       loadGoalsForMatches(coldMatchIds),
       loadGoalsForMatches(rainMatchIds),
+      loadGoalsForMatches(sunnyMatchIds),
     ]);
 
   const coldGoalsByPlayer = new Map<number, number>();
@@ -234,6 +263,21 @@ export default async function WeatherStatsPage() {
     }
   }
 
+  const sunnyGoalsByPlayer = new Map<number, number>();
+  const sunnyAssistsByPlayer = new Map<number, number>();
+  for (const goal of sunnyGoals) {
+    if (goal.isOwnGoal) continue;
+
+    sunnyGoalsByPlayer.set(goal.scorerPlayerId, (sunnyGoalsByPlayer.get(goal.scorerPlayerId) ?? 0) + 1);
+
+    if (goal.assistPlayerId !== null) {
+      sunnyAssistsByPlayer.set(
+        goal.assistPlayerId,
+        (sunnyAssistsByPlayer.get(goal.assistPlayerId) ?? 0) + 1,
+      );
+    }
+  }
+
   const mvpByPlayer = new Map<number, number>();
   for (const match of weatherMatches) {
     const isBadWeather =
@@ -246,11 +290,29 @@ export default async function WeatherStatsPage() {
     mvpByPlayer.set(match.mvpPlayerId, (mvpByPlayer.get(match.mvpPlayerId) ?? 0) + 1);
   }
 
+  const sunnyMvpByPlayer = new Map<number, number>();
+  for (const match of weatherMatches) {
+    const isSunnyMatch = isSunnyLikeWeather({
+      conditionLabel: match.conditionLabel,
+      precipMm: match.precipMm,
+      temperatureC: match.temperatureC,
+    });
+
+    if (!isSunnyMatch || match.mvpPlayerId === null) {
+      continue;
+    }
+
+    sunnyMvpByPlayer.set(match.mvpPlayerId, (sunnyMvpByPlayer.get(match.mvpPlayerId) ?? 0) + 1);
+  }
+
   const allPlayerIds = Array.from(
     new Set([
       ...Array.from(coldGoalsByPlayer.keys()),
       ...Array.from(rainGoalsByPlayer.keys()),
       ...Array.from(rainAssistsByPlayer.keys()),
+      ...Array.from(sunnyGoalsByPlayer.keys()),
+      ...Array.from(sunnyAssistsByPlayer.keys()),
+      ...Array.from(sunnyMvpByPlayer.keys()),
       ...Array.from(mvpByPlayer.keys()),
     ]),
   );
@@ -270,6 +332,19 @@ export default async function WeatherStatsPage() {
   const coldGamesByPlayer = countGamesByPlayer(coldParticipants);
   const rainGamesByPlayer = countGamesByPlayer(rainParticipants);
   const badWeatherGamesByPlayer = countGamesByPlayer(badWeatherParticipants);
+  const sunnyGamesByPlayer = countGamesByPlayer(sunnyParticipants);
+
+  const sunnyTopScorers = mapToSortedRankingRows(
+    sunnyGoalsByPlayer,
+    sunnyGamesByPlayer,
+    playerNameById,
+  );
+  const sunnyTopAssists = mapToSortedRankingRows(
+    sunnyAssistsByPlayer,
+    sunnyGamesByPlayer,
+    playerNameById,
+  );
+  const sunnyMvps = mapToSortedRankingRows(sunnyMvpByPlayer, sunnyGamesByPlayer, playerNameById);
 
   const coldTopScorers = mapToSortedRankingRows(
     coldGoalsByPlayer,
@@ -306,6 +381,27 @@ export default async function WeatherStatsPage() {
         </p>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <RankingCard
+            title="Schönwetter-Knipser 🌤️"
+            subtitle="Topscorer in Spielen mit 0 mm Niederschlag und mindestens 15 °C"
+            valueLabel="Tore"
+            rows={sunnyTopScorers}
+          />
+
+          <RankingCard
+            title="Schönwetter-Playmaker 🎯"
+            subtitle="Top-Assists in Spielen mit 0 mm Niederschlag und mindestens 15 °C"
+            valueLabel="Assists"
+            rows={sunnyTopAssists}
+          />
+
+          <RankingCard
+            title="Schönwetter-MVPs 🏆"
+            subtitle="MVPs in Spielen mit 0 mm Niederschlag und mindestens 15 °C"
+            valueLabel="MVPs"
+            rows={sunnyMvps}
+          />
+
           <RankingCard
             title="Eiskalte Knipser"
             subtitle="Topscorer in Spielen mit Temperatur unter 10 °C"

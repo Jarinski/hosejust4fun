@@ -4,6 +4,7 @@ import { asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
+import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 
 type MatchBrief = {
   id: number;
@@ -163,6 +164,14 @@ export default async function Home() {
         .catch(() => null)
     : null;
 
+  const latestWeatherPresentation = latestMatchWeather
+    ? getWeatherPresentation({
+        conditionLabel: latestMatchWeather.conditionLabel,
+        temperatureC: latestMatchWeather.temperatureC,
+        precipMm: latestMatchWeather.precipMm,
+      })
+    : null;
+
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
   const mvpCount = sql<number>`count(${matches.id})`;
@@ -302,6 +311,11 @@ export default async function Home() {
                 <span>{formatDate(latestMatch.matchDate)}</span>
                 <span>Saison: {latestMatch.seasonName ?? "—"}</span>
                 <span>MVP: {latestMatch.mvpName ?? "nicht vergeben"}</span>
+                {latestWeatherPresentation ? (
+                  <span>
+                    Wetter: {latestWeatherPresentation.icon} {latestWeatherPresentation.label}
+                  </span>
+                ) : null}
               </div>
             </article>
           ) : (

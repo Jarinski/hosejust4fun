@@ -4,6 +4,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
+import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 
 export default async function MatchesPage() {
   let allMatches: Array<{
@@ -62,9 +63,9 @@ export default async function MatchesPage() {
 
   const matchIds = allMatches.map((match) => match.id);
 
-  const [allGoals, allWeather] = await Promise.all([
+  const allGoals =
     matchIds.length > 0
-      ? db
+      ? await db
           .select({
             matchId: goalEvents.matchId,
             teamSide: goalEvents.teamSide,
@@ -76,9 +77,30 @@ export default async function MatchesPage() {
           .from(goalEvents)
           .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
           .where(inArray(goalEvents.matchId, matchIds))
-      : Promise.resolve([]),
+          .catch(async () => {
+            // Fallback for databases where the own-goal migration has not yet been applied.
+            const legacyGoals = await db
+              .select({
+                matchId: goalEvents.matchId,
+                teamSide: goalEvents.teamSide,
+                scorerPlayerId: goalEvents.scorerPlayerId,
+                scorerName: scorerPlayers.name,
+                assistPlayerId: goalEvents.assistPlayerId,
+              })
+              .from(goalEvents)
+              .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
+              .where(inArray(goalEvents.matchId, matchIds));
+
+            return legacyGoals.map((goal) => ({
+              ...goal,
+              isOwnGoal: false,
+            }));
+          })
+      : [];
+
+  const allWeather =
     matchIds.length > 0
-      ? db
+      ? await db
           .select({
             matchId: matchWeather.matchId,
             conditionLabel: matchWeather.conditionLabel,
@@ -88,8 +110,7 @@ export default async function MatchesPage() {
           .from(matchWeather)
           .where(inArray(matchWeather.matchId, matchIds))
           .catch(() => [])
-      : Promise.resolve([]),
-  ]);
+      : [];
 
   const goalsByMatchId = new Map<number, typeof allGoals>();
   for (const goal of allGoals) {
@@ -185,7 +206,20 @@ export default async function MatchesPage() {
                     <td className="px-4 py-3 text-zinc-300">
                       {weatherByMatchId.get(match.id) ? (
                         <>
-                          <p>{weatherByMatchId.get(match.id)?.conditionLabel ?? "Wetter erfasst"}</p>
+                          {(() => {
+                            const weather = weatherByMatchId.get(match.id)!;
+                            const presentation = getWeatherPresentation({
+                              conditionLabel: weather.conditionLabel,
+                              temperatureC: weather.temperatureC,
+                              precipMm: weather.precipMm,
+                            });
+
+                            return (
+                              <p className="font-medium text-zinc-100">
+                                {presentation.icon} {presentation.label}
+                              </p>
+                            );
+                          })()}
                           <p className="text-xs text-zinc-400">
                             {weatherByMatchId.get(match.id)?.temperatureC !== null &&
                             weatherByMatchId.get(match.id)?.temperatureC !== undefined
