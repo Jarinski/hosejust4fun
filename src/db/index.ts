@@ -1,12 +1,32 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-const databaseUrl = process.env.DATABASE_URL?.trim();
+const DATABASE_URL_CANDIDATES = [
+  "DATABASE_URL",
+  "POSTGRES_URL",
+  "POSTGRES_PRISMA_URL",
+  "POSTGRES_URL_NON_POOLING",
+  "NEON_DATABASE_URL",
+] as const;
+
+function resolveDatabaseUrl() {
+  for (const key of DATABASE_URL_CANDIDATES) {
+    const value = process.env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
 
 function createPool(): Pool {
+  const databaseUrl = resolveDatabaseUrl();
+
   if (!databaseUrl) {
-    const missingUrlError =
-      "DATABASE_URL fehlt. Runtime-DB-Verbindung benötigt DATABASE_URL.";
+    const missingUrlError = `Keine DB-URL gefunden. Setze eine dieser Variablen: ${DATABASE_URL_CANDIDATES.join(
+      ", "
+    )}.`;
 
     const failingPool = {
       query: async () => {
@@ -25,7 +45,10 @@ function createPool(): Pool {
     const parsed = new URL(databaseUrl);
     const host = parsed.hostname;
 
-    if (process.env.NODE_ENV === "production" && (host === "localhost" || host === "127.0.0.1")) {
+    if (
+      process.env.NODE_ENV === "production" &&
+      (host === "localhost" || host === "127.0.0.1")
+    ) {
       throw new Error("Ungültige DATABASE_URL in Production: localhost/127.0.0.1 ist nicht erlaubt.");
     }
   } catch (error) {
