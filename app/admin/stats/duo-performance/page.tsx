@@ -29,12 +29,12 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     : params.seasonId;
 
   const parsedSeasonId = Number(seasonIdParam);
-  const selectedSeason =
+  const selectedSeason: { id: number; name: string } | null =
     seasonIdParam !== undefined && seasonIdParam !== "" && Number.isInteger(parsedSeasonId)
       ? allSeasons.find((season) => season.id === parsedSeasonId) ?? null
       : null;
 
-  const validSeasonId = selectedSeason?.id;
+  const validSeasonId = selectedSeason ? selectedSeason.id : undefined;
 
   const participants = validSeasonId
     ? await db
