@@ -33,6 +33,7 @@ export const matches = pgTable("matches", {
   seasonId: integer("season_id")
     .notNull()
     .references(() => seasons.id),
+  mvpPlayerId: integer("mvp_player_id").references(() => players.id, { onDelete: "set null" }),
   matchDate: timestamp("match_date").notNull(),
   team1Name: text("team_1_name").notNull(),
   team2Name: text("team_2_name").notNull(),

@@ -52,16 +52,22 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     .orderBy(desc(assistsCount), asc(players.name));
 
   return (
-    <main className="p-6">
-      <p className="mb-4">
-        <Link href="/admin/matches">← Zurück zu Matches</Link>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <p className="mb-4 text-sm text-zinc-300">
+        <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
       </p>
 
-      <h1 className="text-xl font-semibold mb-4">Top-Assists</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Top-Assists</h1>
 
-      <form method="GET" className="mb-4 flex items-center gap-2">
-        <label htmlFor="seasonId">Saison:</label>
-        <select id="seasonId" name="seasonId" defaultValue={validSeasonId?.toString() ?? ""}>
+      <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
+        <label htmlFor="seasonId" className="text-sm text-zinc-300">Saison:</label>
+        <select
+          id="seasonId"
+          name="seasonId"
+          defaultValue={validSeasonId?.toString() ?? ""}
+          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+        >
           <option value="">Alle Saisons</option>
           {allSeasons.map((season) => (
             <option key={season.id} value={season.id}>
@@ -69,37 +75,45 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
             </option>
           ))}
         </select>
-        <button type="submit">Filtern</button>
+        <button
+          type="submit"
+          className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+        >
+          Filtern
+        </button>
       </form>
 
-      <p className="mb-4 text-sm text-gray-600">
+      <p className="mb-4 text-sm text-zinc-400">
         Aktive Ansicht: {selectedSeason ? selectedSeason.name : "Alle Saisons"}
       </p>
 
       {seasonIdParam && !selectedSeason ? (
-        <p className="mb-4 text-sm">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
+        <p className="mb-4 text-sm text-amber-300">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
       ) : null}
 
       {topAssists.length === 0 ? (
-        <p>Noch keine Assists erfasst.</p>
+        <p className="text-zinc-400">Noch keine Assists erfasst.</p>
       ) : (
-        <table>
-          <thead>
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <table className="min-w-full text-sm">
+          <thead className="bg-zinc-950/70 text-zinc-300">
             <tr>
-              <th>Spieler</th>
-              <th>Assists</th>
+              <th className="px-4 py-3 text-left">Spieler</th>
+              <th className="px-4 py-3 text-left">Assists</th>
             </tr>
           </thead>
           <tbody>
             {topAssists.map((entry) => (
-              <tr key={entry.playerId}>
-                <td>{entry.playerName}</td>
-                <td>{entry.assists}</td>
+              <tr key={entry.playerId} className="border-t border-zinc-800">
+                <td className="px-4 py-3">{entry.playerName}</td>
+                <td className="px-4 py-3 font-semibold text-red-300">{entry.assists}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
+      </section>
     </main>
   );
 }

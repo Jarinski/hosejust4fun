@@ -67,16 +67,22 @@ export default async function ScorerAssistCombosPage({
     .orderBy(desc(combosCount), asc(assisters.name), asc(scorers.name));
 
   return (
-    <main className="p-6">
-      <p className="mb-4">
-        <Link href="/admin/matches">← Zurück zu Matches</Link>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <p className="mb-4 text-sm text-zinc-300">
+        <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
       </p>
 
-      <h1 className="text-xl font-semibold mb-4">Scorer-Assist-Kombinationen</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Scorer-Assist-Kombinationen</h1>
 
-      <form method="GET" className="mb-4 flex items-center gap-2">
-        <label htmlFor="seasonId">Saison:</label>
-        <select id="seasonId" name="seasonId" defaultValue={validSeasonId?.toString() ?? ""}>
+      <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
+        <label htmlFor="seasonId" className="text-sm text-zinc-300">Saison:</label>
+        <select
+          id="seasonId"
+          name="seasonId"
+          defaultValue={validSeasonId?.toString() ?? ""}
+          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+        >
           <option value="">Alle Saisons</option>
           {allSeasons.map((season) => (
             <option key={season.id} value={season.id}>
@@ -84,39 +90,47 @@ export default async function ScorerAssistCombosPage({
             </option>
           ))}
         </select>
-        <button type="submit">Filtern</button>
+        <button
+          type="submit"
+          className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+        >
+          Filtern
+        </button>
       </form>
 
-      <p className="mb-4 text-sm text-gray-600">
+      <p className="mb-4 text-sm text-zinc-400">
         Aktive Ansicht: {selectedSeason ? selectedSeason.name : "Alle Saisons"}
       </p>
 
       {seasonIdParam && !selectedSeason ? (
-        <p className="mb-4 text-sm">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
+        <p className="mb-4 text-sm text-amber-300">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
       ) : null}
 
       {combos.length === 0 ? (
-        <p>Noch keine Scorer-Assist-Kombinationen erfasst.</p>
+        <p className="text-zinc-400">Noch keine Scorer-Assist-Kombinationen erfasst.</p>
       ) : (
-        <table>
-          <thead>
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <table className="min-w-full text-sm">
+          <thead className="bg-zinc-950/70 text-zinc-300">
             <tr>
-              <th>Vorlagengeber</th>
-              <th>Torschütze</th>
-              <th>Anzahl</th>
+              <th className="px-4 py-3 text-left">Vorlagengeber</th>
+              <th className="px-4 py-3 text-left">Torschütze</th>
+              <th className="px-4 py-3 text-left">Anzahl</th>
             </tr>
           </thead>
           <tbody>
             {combos.map((entry) => (
-              <tr key={`${entry.assisterId}-${entry.scorerId}`}>
-                <td>{entry.assisterName}</td>
-                <td>{entry.scorerName}</td>
-                <td>{entry.count}</td>
+              <tr key={`${entry.assisterId}-${entry.scorerId}`} className="border-t border-zinc-800">
+                <td className="px-4 py-3">{entry.assisterName}</td>
+                <td className="px-4 py-3">{entry.scorerName}</td>
+                <td className="px-4 py-3 font-semibold text-red-300">{entry.count}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
+      </section>
     </main>
   );
 }

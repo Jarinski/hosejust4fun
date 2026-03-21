@@ -40,21 +40,26 @@ export default async function NewMatchPage({
   }
 
   return (
-    <main className="p-6">
-      <h1 className="text-xl font-semibold mb-4">Neues Spiel anlegen</h1>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <h1 className="mb-4 text-2xl font-semibold">Neues Spiel anlegen</h1>
 
-      {isSuccess ? (
-        <p className="mb-4 text-green-700">Spiel wurde erfolgreich angelegt.</p>
-      ) : null}
+        {isSuccess ? (
+          <p className="mb-4 rounded-lg border border-emerald-700/40 bg-emerald-950/40 px-3 py-2 text-emerald-300">
+            Spiel wurde erfolgreich angelegt.
+          </p>
+        ) : null}
 
-      {hasError ? (
-        <p className="mb-4 text-red-700">Bitte alle Pflichtfelder korrekt ausfüllen.</p>
-      ) : null}
+        {hasError ? (
+          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+            Bitte alle Pflichtfelder korrekt ausfüllen.
+          </p>
+        ) : null}
 
-      <form action={createMatch} className="flex flex-col gap-3 max-w-md">
-        <label className="flex flex-col gap-1">
-          <span>Saison</span>
-          <select name="seasonId" required>
+        <form action={createMatch} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-zinc-300">Saison</span>
+            <select name="seasonId" required className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
             <option value="">Bitte wählen</option>
             {allSeasons.map((season) => (
               <option key={season.id} value={season.id}>
@@ -64,23 +69,44 @@ export default async function NewMatchPage({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span>Datum des Spiels</span>
-          <input type="date" name="matchDate" required />
-        </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-zinc-300">Datum des Spiels</span>
+            <input
+              type="date"
+              name="matchDate"
+              required
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            />
+          </label>
 
-        <label className="flex flex-col gap-1">
-          <span>Team 1 Name</span>
-          <input type="text" name="team1Name" required />
-        </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-zinc-300">Team 1 Name</span>
+            <input
+              type="text"
+              name="team1Name"
+              required
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            />
+          </label>
 
-        <label className="flex flex-col gap-1">
-          <span>Team 2 Name</span>
-          <input type="text" name="team2Name" required />
-        </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-zinc-300">Team 2 Name</span>
+            <input
+              type="text"
+              name="team2Name"
+              required
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            />
+          </label>
 
-        <button type="submit">Speichern</button>
-      </form>
+          <button
+            type="submit"
+            className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+          >
+            Speichern
+          </button>
+        </form>
+      </section>
     </main>
   );
 }

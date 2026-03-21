@@ -54,9 +54,14 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
 
   const filterUi = (
     <>
-      <form method="GET" className="mb-4 flex items-center gap-2">
-        <label htmlFor="seasonId">Saison:</label>
-        <select id="seasonId" name="seasonId" defaultValue={validSeasonId?.toString() ?? ""}>
+      <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
+        <label htmlFor="seasonId" className="text-sm text-zinc-300">Saison:</label>
+        <select
+          id="seasonId"
+          name="seasonId"
+          defaultValue={validSeasonId?.toString() ?? ""}
+          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+        >
           <option value="">Alle Saisons</option>
           {allSeasons.map((season) => (
             <option key={season.id} value={season.id}>
@@ -64,29 +69,36 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
             </option>
           ))}
         </select>
-        <button type="submit">Filtern</button>
+        <button
+          type="submit"
+          className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+        >
+          Filtern
+        </button>
       </form>
 
-      <p className="mb-4 text-sm text-gray-600">
+      <p className="mb-4 text-sm text-zinc-400">
         Aktive Ansicht: {selectedSeason ? selectedSeason.name : "Alle Saisons"}
       </p>
 
       {seasonIdParam && !selectedSeason ? (
-        <p className="mb-4 text-sm">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
+        <p className="mb-4 text-sm text-amber-300">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
       ) : null}
     </>
   );
 
   if (participants.length === 0) {
     return (
-      <main className="p-6">
-        <p className="mb-4">
-          <Link href="/admin/matches">← Zurück zu Matches</Link>
-        </p>
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="mb-4 text-sm text-zinc-300">
+            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+          </p>
 
-        <h1 className="text-xl font-semibold mb-4">Duo-Performance</h1>
-        {filterUi}
-        <p>Noch keine Teilnehmerdaten erfasst.</p>
+          <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
+          {filterUi}
+          <p className="text-zinc-400">Noch keine Teilnehmerdaten erfasst.</p>
+        </section>
       </main>
     );
   }
@@ -153,14 +165,16 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
 
   if (duoPerformance.length === 0) {
     return (
-      <main className="p-6">
-        <p className="mb-4">
-          <Link href="/admin/matches">← Zurück zu Matches</Link>
-        </p>
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="mb-4 text-sm text-zinc-300">
+            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+          </p>
 
-        <h1 className="text-xl font-semibold mb-4">Duo-Performance</h1>
-        {filterUi}
-        <p>Noch keine Duos vorhanden.</p>
+          <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
+          {filterUi}
+          <p className="text-zinc-400">Noch keine Duos vorhanden.</p>
+        </section>
       </main>
     );
   }
@@ -214,36 +228,40 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     });
 
   return (
-    <main className="p-6">
-      <p className="mb-4">
-        <Link href="/admin/matches">← Zurück zu Matches</Link>
-      </p>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <p className="mb-4 text-sm text-zinc-300">
+          <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+        </p>
 
-      <h1 className="text-xl font-semibold mb-4">Duo-Performance</h1>
-      {filterUi}
+        <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
+        {filterUi}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Spieler 1</th>
-            <th>Spieler 2</th>
-            <th>Gemeinsame Spiele</th>
-            <th>Teamtore zusammen</th>
-            <th>Tore pro Spiel</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((entry) => (
-            <tr key={`${entry.player1Id}-${entry.player2Id}`}>
-              <td>{entry.player1Name}</td>
-              <td>{entry.player2Name}</td>
-              <td>{entry.gamesTogether}</td>
-              <td>{entry.teamGoals}</td>
-              <td>{entry.goalsPerGame}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-950/70 text-zinc-300">
+              <tr>
+                <th className="px-4 py-3 text-left">Spieler 1</th>
+                <th className="px-4 py-3 text-left">Spieler 2</th>
+                <th className="px-4 py-3 text-left">Gemeinsame Spiele</th>
+                <th className="px-4 py-3 text-left">Teamtore zusammen</th>
+                <th className="px-4 py-3 text-left">Tore pro Spiel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((entry) => (
+                <tr key={`${entry.player1Id}-${entry.player2Id}`} className="border-t border-zinc-800">
+                  <td className="px-4 py-3">{entry.player1Name}</td>
+                  <td className="px-4 py-3">{entry.player2Name}</td>
+                  <td className="px-4 py-3">{entry.gamesTogether}</td>
+                  <td className="px-4 py-3">{entry.teamGoals}</td>
+                  <td className="px-4 py-3 font-semibold text-red-300">{entry.goalsPerGame}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   );
 }

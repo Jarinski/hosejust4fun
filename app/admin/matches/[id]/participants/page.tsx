@@ -15,7 +15,13 @@ export default async function MatchParticipantsPage({
 
   const matchId = Number(routeParams.id);
   if (!Number.isInteger(matchId)) {
-    return <main className="p-6">Ungültige Match-ID.</main>;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          Ungültige Match-ID.
+        </section>
+      </main>
+    );
   }
 
   const matchRows = await db
@@ -31,7 +37,13 @@ export default async function MatchParticipantsPage({
   const match = matchRows[0];
 
   if (!match) {
-    return <main className="p-6">Spiel nicht gefunden.</main>;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          Spiel nicht gefunden.
+        </section>
+      </main>
+    );
   }
 
   const activePlayers = await db
@@ -111,42 +123,55 @@ export default async function MatchParticipantsPage({
   }
 
   return (
-    <main className="p-6">
-      <h1 className="text-xl font-semibold mb-2">Teilnehmer verwalten</h1>
-      <p className="mb-4">
-        Spiel #{match.id}: {match.team1Name} vs. {match.team2Name}
-      </p>
-
-      {queryParams.success === "1" ? (
-        <p className="mb-4 text-green-700">Teilnehmer gespeichert.</p>
-      ) : null}
-
-      {queryParams.error === "1" ? (
-        <p className="mb-4 text-red-700">
-          Teilnehmer konnten nicht gespeichert werden.
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <h1 className="mb-2 text-xl font-semibold">Teilnehmer verwalten</h1>
+        <p className="mb-4 text-zinc-300">
+          Spiel #{match.id}: {match.team1Name} vs. {match.team2Name}
         </p>
-      ) : null}
 
-      <form action={saveParticipants} className="flex flex-col gap-3 max-w-xl">
-        <input type="hidden" name="matchId" value={matchId} />
+        {queryParams.success === "1" ? (
+          <p className="mb-4 rounded-lg border border-emerald-700/40 bg-emerald-950/40 px-3 py-2 text-emerald-300">
+            Teilnehmer gespeichert.
+          </p>
+        ) : null}
 
-        {activePlayers.map((player) => {
-          const selected = selectedByPlayerId.get(player.id) ?? "none";
+        {queryParams.error === "1" ? (
+          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+            Teilnehmer konnten nicht gespeichert werden.
+          </p>
+        ) : null}
 
-          return (
-            <label key={player.id} className="flex items-center gap-3">
-              <span className="min-w-40">{player.name}</span>
-              <select name={`player_${player.id}`} defaultValue={selected}>
-                <option value="none">nicht dabei</option>
-                <option value="team_1">Team 1</option>
-                <option value="team_2">Team 2</option>
-              </select>
-            </label>
-          );
-        })}
+        <form action={saveParticipants} className="flex flex-col gap-3">
+          <input type="hidden" name="matchId" value={matchId} />
 
-        <button type="submit">Speichern</button>
-      </form>
+          {activePlayers.map((player) => {
+            const selected = selectedByPlayerId.get(player.id) ?? "none";
+
+            return (
+              <label key={player.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <span className="text-zinc-200">{player.name}</span>
+                <select
+                  name={`player_${player.id}`}
+                  defaultValue={selected}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+                >
+                  <option value="none">nicht dabei</option>
+                  <option value="team_1">Team 1</option>
+                  <option value="team_2">Team 2</option>
+                </select>
+              </label>
+            );
+          })}
+
+          <button
+            type="submit"
+            className="mt-2 w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+          >
+            Speichern
+          </button>
+        </form>
+      </section>
     </main>
   );
 }

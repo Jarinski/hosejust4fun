@@ -20,7 +20,13 @@ export default async function MatchGoalsPage({
 
   const matchId = Number(routeParams.id);
   if (!Number.isInteger(matchId)) {
-    return <main className="p-6">Ungültige Match-ID.</main>;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          Ungültige Match-ID.
+        </section>
+      </main>
+    );
   }
 
   const matchRows = await db
@@ -36,7 +42,13 @@ export default async function MatchGoalsPage({
   const match = matchRows[0];
 
   if (!match) {
-    return <main className="p-6">Spiel nicht gefunden.</main>;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          Spiel nicht gefunden.
+        </section>
+      </main>
+    );
   }
 
   const participantRows = await db
@@ -187,47 +199,53 @@ export default async function MatchGoalsPage({
   }
 
   return (
-    <main className="p-6">
-      <h1 className="text-xl font-semibold mb-2">Tore erfassen</h1>
-      <p className="mb-4">
-        Spiel #{match.id}: {match.team1Name} vs. {match.team2Name}
-      </p>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <h1 className="mb-2 text-xl font-semibold">Tore erfassen</h1>
+        <p className="mb-4 text-zinc-300">
+          Spiel #{match.id}: {match.team1Name} vs. {match.team2Name}
+        </p>
 
-      {queryParams.success === "1" ? (
-        <p className="mb-4 text-green-700">Tore wurden gespeichert.</p>
-      ) : null}
+        {queryParams.success === "1" ? (
+          <p className="mb-4 rounded-lg border border-emerald-700/40 bg-emerald-950/40 px-3 py-2 text-emerald-300">
+            Tore wurden gespeichert.
+          </p>
+        ) : null}
 
-      {queryParams.error ? (
-        <p className="mb-4 text-red-700">Tore konnten nicht gespeichert werden.</p>
-      ) : null}
+        {queryParams.error ? (
+          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+            Tore konnten nicht gespeichert werden.
+          </p>
+        ) : null}
 
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <h2 className="font-medium mb-2">Team 1 ({match.team1Name})</h2>
-          <ul className="list-disc pl-5">
+        <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <h2 className="mb-2 font-medium">Team 1 ({match.team1Name})</h2>
+            <ul className="list-disc pl-5 text-zinc-200">
             {team1Players.length === 0 ? <li>Keine Teilnehmer</li> : null}
             {team1Players.map((player) => (
               <li key={player.id}>{player.name}</li>
             ))}
           </ul>
-        </div>
-        <div>
-          <h2 className="font-medium mb-2">Team 2 ({match.team2Name})</h2>
-          <ul className="list-disc pl-5">
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <h2 className="mb-2 font-medium">Team 2 ({match.team2Name})</h2>
+            <ul className="list-disc pl-5 text-zinc-200">
             {team2Players.length === 0 ? <li>Keine Teilnehmer</li> : null}
             {team2Players.map((player) => (
               <li key={player.id}>{player.name}</li>
             ))}
           </ul>
-        </div>
-      </section>
+          </div>
+        </section>
 
-      <GoalsForm
-        action={saveGoals}
-        matchId={matchId}
-        team1Players={team1Players}
-        team2Players={team2Players}
-      />
+        <GoalsForm
+          action={saveGoals}
+          matchId={matchId}
+          team1Players={team1Players}
+          team2Players={team2Players}
+        />
+      </section>
     </main>
   );
 }

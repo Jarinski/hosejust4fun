@@ -20,13 +20,15 @@ export default async function DuosPage() {
 
   if (participants.length === 0) {
     return (
-      <main className="p-6">
-        <p className="mb-4">
-          <Link href="/admin/matches">← Zurück zu Matches</Link>
-        </p>
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="mb-4 text-sm text-zinc-300">
+            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+          </p>
 
-        <h1 className="text-xl font-semibold mb-4">Top-Duos</h1>
-        <p>Noch keine Teilnehmerdaten erfasst.</p>
+          <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
+          <p className="text-zinc-400">Noch keine Teilnehmerdaten erfasst.</p>
+        </section>
       </main>
     );
   }
@@ -70,13 +72,15 @@ export default async function DuosPage() {
 
   if (duoCounts.length === 0) {
     return (
-      <main className="p-6">
-        <p className="mb-4">
-          <Link href="/admin/matches">← Zurück zu Matches</Link>
-        </p>
+      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="mb-4 text-sm text-zinc-300">
+            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+          </p>
 
-        <h1 className="text-xl font-semibold mb-4">Top-Duos</h1>
-        <p>Noch keine Duos vorhanden.</p>
+          <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
+          <p className="text-zinc-400">Noch keine Duos vorhanden.</p>
+        </section>
       </main>
     );
   }
@@ -115,31 +119,35 @@ export default async function DuosPage() {
     });
 
   return (
-    <main className="p-6">
-      <p className="mb-4">
-        <Link href="/admin/matches">← Zurück zu Matches</Link>
-      </p>
+    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <p className="mb-4 text-sm text-zinc-300">
+          <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+        </p>
 
-      <h1 className="text-xl font-semibold mb-4">Top-Duos</h1>
+        <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Spieler 1</th>
-            <th>Spieler 2</th>
-            <th>Gemeinsame Spiele</th>
-          </tr>
-        </thead>
-        <tbody>
-          {duosWithNames.map((duo) => (
-            <tr key={`${duo.player1Id}-${duo.player2Id}`}>
-              <td>{duo.player1Name}</td>
-              <td>{duo.player2Name}</td>
-              <td>{duo.gamesTogether}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-950/70 text-zinc-300">
+              <tr>
+                <th className="px-4 py-3 text-left">Spieler 1</th>
+                <th className="px-4 py-3 text-left">Spieler 2</th>
+                <th className="px-4 py-3 text-left">Gemeinsame Spiele</th>
+              </tr>
+            </thead>
+            <tbody>
+              {duosWithNames.map((duo) => (
+                <tr key={`${duo.player1Id}-${duo.player2Id}`} className="border-t border-zinc-800">
+                  <td className="px-4 py-3">{duo.player1Name}</td>
+                  <td className="px-4 py-3">{duo.player2Name}</td>
+                  <td className="px-4 py-3 font-semibold text-red-300">{duo.gamesTogether}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   );
 }
