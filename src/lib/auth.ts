@@ -51,7 +51,7 @@ export function hasAuthSecretConfigured() {
 }
 
 function getConfiguredAdminAccounts(): AdminAccount[] {
-  const jsonConfig = process.env.ADMIN_ACCOUNTS_JSON;
+  const jsonConfig = process.env.ADMIN_ACCOUNTS_JSON ?? process.env.ADMIN_USERS_JSON;
 
   if (jsonConfig) {
     try {
