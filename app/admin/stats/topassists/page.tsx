@@ -23,39 +23,44 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
-    seasonIdParam &&
-    Number.isInteger(parsedSeasonId) &&
-    allSeasons.find((season) => season.id === parsedSeasonId);
+    seasonIdParam !== undefined && seasonIdParam !== "" && Number.isInteger(parsedSeasonId)
+      ? allSeasons.find((season) => season.id === parsedSeasonId) ?? null
+      : null;
 
   const validSeasonId = selectedSeason?.id;
 
   const assistsCount = sql<number>`count(${goalEvents.id})`;
 
-  let topAssistsQuery = db
-    .select({
-      playerId: players.id,
-      playerName: players.name,
-      assists: assistsCount.as("assists"),
-    })
-    .from(goalEvents)
-    .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-    .where(and(isNotNull(goalEvents.assistPlayerId), eq(goalEvents.isOwnGoal, false)));
-
-  if (validSeasonId) {
-    topAssistsQuery = topAssistsQuery
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(
-        and(
-          isNotNull(goalEvents.assistPlayerId),
-          eq(goalEvents.isOwnGoal, false),
-          eq(matches.seasonId, validSeasonId),
-        ),
-      );
-  }
-
-  const topAssists = await topAssistsQuery
-    .groupBy(players.id, players.name)
-    .orderBy(desc(assistsCount), asc(players.name));
+  const topAssists = validSeasonId
+    ? await db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+          assists: assistsCount.as("assists"),
+        })
+        .from(goalEvents)
+        .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(
+          and(
+            isNotNull(goalEvents.assistPlayerId),
+            eq(goalEvents.isOwnGoal, false),
+            eq(matches.seasonId, validSeasonId),
+          ),
+        )
+        .groupBy(players.id, players.name)
+        .orderBy(desc(assistsCount), asc(players.name))
+    : await db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+          assists: assistsCount.as("assists"),
+        })
+        .from(goalEvents)
+        .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+        .where(and(isNotNull(goalEvents.assistPlayerId), eq(goalEvents.isOwnGoal, false)))
+        .groupBy(players.id, players.name)
+        .orderBy(desc(assistsCount), asc(players.name));
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">

@@ -37,9 +37,9 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
-    seasonIdParam &&
-    Number.isInteger(parsedSeasonId) &&
-    allSeasons.find((season) => season.id === parsedSeasonId);
+    seasonIdParam !== undefined && seasonIdParam !== "" && Number.isInteger(parsedSeasonId)
+      ? allSeasons.find((season) => season.id === parsedSeasonId) ?? null
+      : null;
 
   const validSeasonId = selectedSeason?.id;
 
@@ -48,25 +48,30 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   let topScorers: Array<{ playerId: number; playerName: string; goals: number }> = [];
 
   try {
-    let topScorersQuery = db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-        goals: goalsCount.as("goals"),
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-      .where(eq(goalEvents.isOwnGoal, false));
-
-    if (validSeasonId) {
-      topScorersQuery = topScorersQuery
-        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)));
-    }
-
-    topScorers = await topScorersQuery
-      .groupBy(players.id, players.name)
-      .orderBy(desc(goalsCount), asc(players.name));
+    topScorers = validSeasonId
+      ? await db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+            goals: goalsCount.as("goals"),
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+          .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)))
+          .groupBy(players.id, players.name)
+          .orderBy(desc(goalsCount), asc(players.name))
+      : await db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+            goals: goalsCount.as("goals"),
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .where(eq(goalEvents.isOwnGoal, false))
+          .groupBy(players.id, players.name)
+          .orderBy(desc(goalsCount), asc(players.name));
   } catch (error) {
     if (!isMissingColumnError(error, "is_own_goal")) {
       throw error;
@@ -74,24 +79,29 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
     ownGoalColumnAvailable = false;
 
-    let topScorersQuery = db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-        goals: goalsCount.as("goals"),
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id));
-
-    if (validSeasonId) {
-      topScorersQuery = topScorersQuery
-        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(eq(matches.seasonId, validSeasonId));
-    }
-
-    topScorers = await topScorersQuery
-      .groupBy(players.id, players.name)
-      .orderBy(desc(goalsCount), asc(players.name));
+    topScorers = validSeasonId
+      ? await db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+            goals: goalsCount.as("goals"),
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+          .where(eq(matches.seasonId, validSeasonId))
+          .groupBy(players.id, players.name)
+          .orderBy(desc(goalsCount), asc(players.name))
+      : await db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+            goals: goalsCount.as("goals"),
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .groupBy(players.id, players.name)
+          .orderBy(desc(goalsCount), asc(players.name));
   }
 
   return (

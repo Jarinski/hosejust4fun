@@ -29,45 +29,53 @@ export default async function ScorerAssistCombosPage({
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
-    seasonIdParam &&
-    Number.isInteger(parsedSeasonId) &&
-    allSeasons.find((season) => season.id === parsedSeasonId);
+    seasonIdParam !== undefined && seasonIdParam !== "" && Number.isInteger(parsedSeasonId)
+      ? allSeasons.find((season) => season.id === parsedSeasonId) ?? null
+      : null;
 
   const validSeasonId = selectedSeason?.id;
 
   const combosCount = sql<number>`count(${goalEvents.id})`;
 
-  let combosQuery = db
-    .select({
-      assisterId: assisters.id,
-      assisterName: assisters.name,
-      scorerId: scorers.id,
-      scorerName: scorers.name,
-      count: combosCount.as("count"),
-    })
-    .from(goalEvents)
-    .innerJoin(assisters, eq(goalEvents.assistPlayerId, assisters.id))
-    .innerJoin(scorers, eq(goalEvents.scorerPlayerId, scorers.id))
-    .where(
-      sql`${isNotNull(goalEvents.scorerPlayerId)} and ${isNotNull(goalEvents.assistPlayerId)} and ${eq(goalEvents.isOwnGoal, false)}`,
-    );
-
-  if (validSeasonId) {
-    combosQuery = combosQuery
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(
-        and(
-          isNotNull(goalEvents.scorerPlayerId),
-          isNotNull(goalEvents.assistPlayerId),
-          eq(goalEvents.isOwnGoal, false),
-          eq(matches.seasonId, validSeasonId),
-        ),
-      );
-  }
-
-  const combos = await combosQuery
-    .groupBy(assisters.id, assisters.name, scorers.id, scorers.name)
-    .orderBy(desc(combosCount), asc(assisters.name), asc(scorers.name));
+  const combos = validSeasonId
+    ? await db
+        .select({
+          assisterId: assisters.id,
+          assisterName: assisters.name,
+          scorerId: scorers.id,
+          scorerName: scorers.name,
+          count: combosCount.as("count"),
+        })
+        .from(goalEvents)
+        .innerJoin(assisters, eq(goalEvents.assistPlayerId, assisters.id))
+        .innerJoin(scorers, eq(goalEvents.scorerPlayerId, scorers.id))
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(
+          and(
+            isNotNull(goalEvents.scorerPlayerId),
+            isNotNull(goalEvents.assistPlayerId),
+            eq(goalEvents.isOwnGoal, false),
+            eq(matches.seasonId, validSeasonId),
+          ),
+        )
+        .groupBy(assisters.id, assisters.name, scorers.id, scorers.name)
+        .orderBy(desc(combosCount), asc(assisters.name), asc(scorers.name))
+    : await db
+        .select({
+          assisterId: assisters.id,
+          assisterName: assisters.name,
+          scorerId: scorers.id,
+          scorerName: scorers.name,
+          count: combosCount.as("count"),
+        })
+        .from(goalEvents)
+        .innerJoin(assisters, eq(goalEvents.assistPlayerId, assisters.id))
+        .innerJoin(scorers, eq(goalEvents.scorerPlayerId, scorers.id))
+        .where(
+          sql`${isNotNull(goalEvents.scorerPlayerId)} and ${isNotNull(goalEvents.assistPlayerId)} and ${eq(goalEvents.isOwnGoal, false)}`,
+        )
+        .groupBy(assisters.id, assisters.name, scorers.id, scorers.name)
+        .orderBy(desc(combosCount), asc(assisters.name), asc(scorers.name));
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">

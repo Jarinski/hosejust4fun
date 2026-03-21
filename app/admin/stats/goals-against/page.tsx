@@ -34,40 +34,47 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
-    seasonIdParam &&
-    Number.isInteger(parsedSeasonId) &&
-    allSeasons.find((season) => season.id === parsedSeasonId);
+    seasonIdParam !== undefined && seasonIdParam !== "" && Number.isInteger(parsedSeasonId)
+      ? allSeasons.find((season) => season.id === parsedSeasonId) ?? null
+      : null;
 
   const validSeasonId = selectedSeason?.id;
 
-  let participantsQuery = db
-    .select({
-      matchId: matchParticipants.matchId,
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
-    })
-    .from(matchParticipants);
+  const participantsPromise = validSeasonId
+    ? db
+        .select({
+          matchId: matchParticipants.matchId,
+          playerId: matchParticipants.playerId,
+          teamSide: matchParticipants.teamSide,
+        })
+        .from(matchParticipants)
+        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .where(eq(matches.seasonId, validSeasonId))
+    : db
+        .select({
+          matchId: matchParticipants.matchId,
+          playerId: matchParticipants.playerId,
+          teamSide: matchParticipants.teamSide,
+        })
+        .from(matchParticipants);
 
-  if (validSeasonId) {
-    participantsQuery = participantsQuery
-      .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-      .where(eq(matches.seasonId, validSeasonId));
-  }
+  const goalsPromise = validSeasonId
+    ? db
+        .select({
+          matchId: goalEvents.matchId,
+          teamSide: goalEvents.teamSide,
+        })
+        .from(goalEvents)
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(eq(matches.seasonId, validSeasonId))
+    : db
+        .select({
+          matchId: goalEvents.matchId,
+          teamSide: goalEvents.teamSide,
+        })
+        .from(goalEvents);
 
-  let goalsQuery = db
-    .select({
-      matchId: goalEvents.matchId,
-      teamSide: goalEvents.teamSide,
-    })
-    .from(goalEvents);
-
-  if (validSeasonId) {
-    goalsQuery = goalsQuery
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(eq(matches.seasonId, validSeasonId));
-  }
-
-  const [participants, goals] = await Promise.all([participantsQuery, goalsQuery]);
+  const [participants, goals] = await Promise.all([participantsPromise, goalsPromise]);
 
   const filterUi = (
     <>
