@@ -287,27 +287,27 @@ export default async function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 text-zinc-100">
+    <main className="min-h-screen bg-stone-100 text-zinc-900">
       <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-5 sm:py-8">
-        <section className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 sm:p-6">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Matchday Dashboard</p>
+        <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Matchday Dashboard</p>
           <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">HoSe Just4Fun</h1>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-300 sm:text-base">
+          <p className="mt-2 max-w-2xl text-sm text-zinc-600 sm:text-base">
             Das kompakte Fußball-Magazin für eure Runde: Ergebnisse, Trends, Storylines und die
             stärksten Performer auf einen Blick.
           </p>
 
           {latestMatch ? (
-            <article className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 sm:p-5">
-              <p className="text-[11px] uppercase tracking-[0.15em] text-zinc-400">Letztes Spiel</p>
+            <article className="mt-4 rounded-xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-zinc-500">Letztes Spiel</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                <p className="text-lg font-semibold text-zinc-100 sm:text-xl">{latestMatch.team1Name}</p>
-                <p className="text-center text-3xl font-extrabold text-zinc-100 sm:text-4xl">
+                <p className="text-lg font-semibold text-zinc-900 sm:text-xl">{latestMatch.team1Name}</p>
+                <p className="text-center text-3xl font-extrabold text-zinc-900 sm:text-4xl">
                   {latestMatch.team1Score}:{latestMatch.team2Score}
                 </p>
-                <p className="text-left text-lg font-semibold text-zinc-100 sm:text-right sm:text-xl">{latestMatch.team2Name}</p>
+                <p className="text-left text-lg font-semibold text-zinc-900 sm:text-right sm:text-xl">{latestMatch.team2Name}</p>
               </div>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-300 sm:text-sm">
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 sm:text-sm">
                 <span>{formatDate(latestMatch.matchDate)}</span>
                 <span>Saison: {latestMatch.seasonName ?? "—"}</span>
                 <span>MVP: {latestMatch.mvpName ?? "nicht vergeben"}</span>
@@ -319,29 +319,29 @@ export default async function Home() {
               </div>
             </article>
           ) : (
-            <article className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4 sm:p-5">
-              <p className="text-zinc-300">Noch keine Spiele erfasst.</p>
+            <article className="mt-4 rounded-xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+              <p className="text-zinc-600">Noch keine Spiele erfasst.</p>
             </article>
           )}
         </section>
 
-        <section className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 sm:p-6">
+        <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold sm:text-xl">Newsflash</h2>
-            <span className="rounded-full border border-zinc-700 px-2.5 py-1 text-[11px] uppercase tracking-wider text-zinc-300">
+            <span className="rounded-full border border-zinc-300 px-2.5 py-1 text-[11px] uppercase tracking-wider text-zinc-600">
               Redaktion
             </span>
           </div>
           {newsflash.length > 0 ? (
-            <ul className="space-y-2 text-sm text-zinc-200">
+            <ul className="space-y-2 text-sm text-zinc-700">
               {newsflash.map((item, index) => (
-                <li key={`${item}-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2.5">
+                <li key={`${item}-${index}`} className="rounded-lg border border-zinc-300 bg-stone-50 px-3 py-2.5">
                   {item}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-zinc-400">Sobald Spiele vorhanden sind, erscheinen hier die Storylines.</p>
+            <p className="text-zinc-500">Sobald Spiele vorhanden sind, erscheinen hier die Storylines.</p>
           )}
         </section>
 
@@ -349,20 +349,20 @@ export default async function Home() {
           {statCards.map((card) => (
             <article
               key={card.title}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-4 transition hover:-translate-y-0.5 hover:border-zinc-500"
+              className="rounded-xl border border-zinc-300 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-zinc-500"
             >
-              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">{card.title}</p>
-              <p className="mt-1.5 text-base font-semibold text-zinc-100">{card.leader}</p>
-              <p className="mt-1.5 text-3xl font-extrabold text-zinc-100">{card.value}</p>
-              <p className="mt-1.5 text-xs text-zinc-400 sm:text-sm">{card.info}</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{card.title}</p>
+              <p className="mt-1.5 text-base font-semibold text-zinc-900">{card.leader}</p>
+              <p className="mt-1.5 text-3xl font-extrabold text-zinc-900">{card.value}</p>
+              <p className="mt-1.5 text-xs text-zinc-500 sm:text-sm">{card.info}</p>
             </article>
           ))}
         </section>
 
-        <section className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 sm:p-6">
+        <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-3 text-lg font-bold sm:text-xl">Letzte Spiele</h2>
           {recentMatches.length === 0 ? (
-            <p className="text-zinc-400">Noch keine Spiele eingetragen.</p>
+            <p className="text-zinc-500">Noch keine Spiele eingetragen.</p>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
               {recentMatches.map((match) => {
@@ -373,21 +373,21 @@ export default async function Home() {
                   <Link
                     key={match.id}
                     href={`/admin/matches/${match.id}`}
-                    className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 transition hover:border-zinc-500"
+                    className="rounded-lg border border-zinc-300 bg-stone-50 p-3 transition hover:border-zinc-500"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-zinc-100">{match.team1Name}</p>
-                      <p className="text-xl font-bold text-zinc-100">
+                      <p className="font-semibold text-zinc-900">{match.team1Name}</p>
+                      <p className="text-xl font-bold text-zinc-900">
                         {match.team1Score}:{match.team2Score}
                       </p>
-                      <p className="text-right font-semibold text-zinc-100">{match.team2Name}</p>
+                      <p className="text-right font-semibold text-zinc-900">{match.team2Name}</p>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-300 sm:text-sm">
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-600 sm:text-sm">
                       <span>{formatDate(match.matchDate)}</span>
                       <span>{match.seasonName ?? "—"}</span>
                       <span>MVP: {match.mvpName ?? "—"}</span>
                       <span>{detail}</span>
-                      <span className="font-medium text-zinc-100">Insights ansehen →</span>
+                      <span className="font-medium text-zinc-900">Insights ansehen →</span>
                     </div>
                   </Link>
                 );
@@ -396,7 +396,7 @@ export default async function Home() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 sm:p-6">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-3 text-lg font-bold sm:text-xl">Rankings</h2>
           <div className="grid gap-3 md:grid-cols-3">
             {[
@@ -404,21 +404,21 @@ export default async function Home() {
               { title: "Top-Assists Top 5", data: topAssists, unit: "Assists" },
               { title: "Top-MVPs Top 5", data: topMvps, unit: "MVP" },
             ].map((ranking) => (
-              <article key={ranking.title} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3.5">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-300 sm:text-sm">
+              <article key={ranking.title} className="rounded-lg border border-zinc-300 bg-stone-50 p-3.5">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-600 sm:text-sm">
                   {ranking.title}
                 </h3>
                 {ranking.data.length === 0 ? (
-                  <p className="text-sm text-zinc-400">Noch keine Daten.</p>
+                  <p className="text-sm text-zinc-500">Noch keine Daten.</p>
                 ) : (
                   <ol className="space-y-1.5 text-sm">
                     {ranking.data.map((entry, index) => (
                       <li key={entry.playerId} className="flex items-center justify-between gap-3">
-                        <span className="text-zinc-100">
-                          <span className="mr-2 text-zinc-400">#{index + 1}</span>
+                        <span className="text-zinc-900">
+                          <span className="mr-2 text-zinc-500">#{index + 1}</span>
                           {entry.playerName}
                         </span>
-                        <span className="font-semibold text-zinc-100">
+                        <span className="font-semibold text-zinc-900">
                           {entry.value} {ranking.unit}
                         </span>
                       </li>
@@ -432,19 +432,19 @@ export default async function Home() {
           <div className="mt-4 flex flex-wrap gap-2.5 text-sm">
             <Link
               href="/admin/matches"
-              className="rounded-lg border border-zinc-700 bg-zinc-100 px-3.5 py-2 text-zinc-900 transition hover:bg-zinc-300"
+              className="rounded-lg border border-zinc-900 bg-zinc-900 px-3.5 py-2 text-zinc-100 transition hover:bg-zinc-700"
             >
               Matches verwalten
             </Link>
             <Link
               href="/admin/stats"
-              className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3.5 py-2 text-zinc-100 transition hover:border-zinc-500"
+              className="rounded-lg border border-zinc-300 bg-stone-50 px-3.5 py-2 text-zinc-900 transition hover:border-zinc-500"
             >
               Mehr Statistiken
             </Link>
             <Link
               href="/admin/players"
-              className="rounded-lg border border-zinc-700 bg-zinc-900/70 px-3.5 py-2 text-zinc-100 transition hover:border-zinc-500"
+              className="rounded-lg border border-zinc-300 bg-stone-50 px-3.5 py-2 text-zinc-900 transition hover:border-zinc-500"
             >
               Spielerübersicht
             </Link>

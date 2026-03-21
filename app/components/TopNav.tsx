@@ -14,9 +14,9 @@ export function TopNav() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-800/90 bg-zinc-950/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-zinc-300/90 bg-stone-100/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href="/" className="text-sm font-semibold tracking-wide text-zinc-100 sm:text-base">
+        <Link href="/" className="text-sm font-semibold tracking-wide text-zinc-900 sm:text-base">
           HoSe Just4Fun
         </Link>
 
@@ -31,8 +31,8 @@ export function TopNav() {
                 href={item.href}
                 className={`rounded-md border px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
                   isActive
-                    ? "border-zinc-300 bg-zinc-100 text-zinc-900"
-                    : "border-zinc-700 bg-zinc-900/70 text-zinc-200 hover:border-zinc-500 hover:text-white"
+                    ? "border-zinc-900 bg-zinc-900 text-zinc-100"
+                    : "border-zinc-300 bg-white/80 text-zinc-700 hover:border-zinc-500 hover:text-zinc-900"
                 }`}
               >
                 {item.label}
