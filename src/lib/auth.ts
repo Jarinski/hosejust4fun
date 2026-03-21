@@ -31,16 +31,23 @@ const loginAttemptsByIp = new Map<string, LoginAttemptState>();
 function getAuthSecret() {
   const secretFromEnv = process.env.AUTH_SECRET;
   if (!secretFromEnv || secretFromEnv.length < MIN_AUTH_SECRET_LENGTH) {
-    throw new Error(
-      `AUTH_SECRET muss gesetzt sein und mindestens ${MIN_AUTH_SECRET_LENGTH} Zeichen haben.`
-    );
+    return null;
   }
 
   return secretFromEnv;
 }
 
 function sign(value: string) {
-  return createHmac("sha256", getAuthSecret()).update(value).digest("base64url");
+  const secret = getAuthSecret();
+  if (!secret) {
+    return null;
+  }
+
+  return createHmac("sha256", secret).update(value).digest("base64url");
+}
+
+export function hasAuthSecretConfigured() {
+  return Boolean(getAuthSecret());
 }
 
 function getConfiguredAdminAccounts(): AdminAccount[] {
@@ -193,6 +200,13 @@ export function resetFailedLoginAttempts(ip: string) {
 function buildSessionToken(payload: SessionPayload) {
   const payloadBase64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = sign(payloadBase64);
+
+  if (!signature) {
+    throw new Error(
+      `AUTH_SECRET muss gesetzt sein und mindestens ${MIN_AUTH_SECRET_LENGTH} Zeichen haben.`
+    );
+  }
+
   return `${payloadBase64}.${signature}`;
 }
 
@@ -203,6 +217,10 @@ function parseSessionToken(token: string): SessionPayload | null {
   }
 
   const expectedSignature = sign(payloadBase64);
+  if (!expectedSignature) {
+    return null;
+  }
+
   const signatureBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expectedSignature);
 
