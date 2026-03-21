@@ -3,15 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
-  { href: "/", label: "Dashboard" },
+type TopNavProps = {
+  isAdmin: boolean;
+};
+
+const publicNavItems = [{ href: "/", label: "Dashboard" }] as const;
+
+const adminNavItems = [
   { href: "/admin/matches", label: "Matches" },
   { href: "/admin/players", label: "Spieler" },
   { href: "/admin/stats", label: "Statistiken" },
 ] as const;
 
-export function TopNav() {
+export function TopNav({ isAdmin }: TopNavProps) {
   const pathname = usePathname();
+  const navItems = [...publicNavItems, ...adminNavItems];
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-300/90 bg-stone-100/95 backdrop-blur">
@@ -39,6 +45,23 @@ export function TopNav() {
               </Link>
             );
           })}
+
+          {isAdmin ? (
+            <Link
+              href="/logout"
+              prefetch={false}
+              className="rounded-md border border-zinc-300 bg-white/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:text-sm"
+            >
+              Logout
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-md border border-zinc-300 bg-white/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:text-sm"
+            >
+              Admin Login
+            </Link>
+          )}
         </nav>
       </div>
     </header>

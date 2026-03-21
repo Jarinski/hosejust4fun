@@ -2,8 +2,11 @@ import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db } from "@/src/db";
 import { players } from "@/src/db/schema";
+import { getAdminSession } from "@/src/lib/auth";
 
 export default async function PlayersPage() {
+  const isAdmin = Boolean(await getAdminSession());
+
   const allPlayers = await db
     .select({
       id: players.id,
@@ -22,12 +25,14 @@ export default async function PlayersPage() {
 
         <div className="mb-4 flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Spieler</h1>
-          <Link
-            href="/admin/players/new"
-            className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
-          >
-            + Neuer Spieler
-          </Link>
+          {isAdmin ? (
+            <Link
+              href="/admin/players/new"
+              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+            >
+              + Neuer Spieler
+            </Link>
+          ) : null}
         </div>
 
         {allPlayers.length === 0 ? (

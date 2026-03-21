@@ -3,10 +3,13 @@ import { alias } from "drizzle-orm/pg-core";
 import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { getAdminSession } from "@/src/lib/auth";
 import { buildMatchStory } from "@/src/lib/matchStory";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 
 export default async function MatchesPage() {
+  const isAdmin = Boolean(await getAdminSession());
+
   let allMatches: Array<{
     id: number;
     matchDate: Date;
@@ -162,12 +165,14 @@ export default async function MatchesPage() {
       <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">Spiele</h1>
-          <Link
-            href="/admin/matches/new"
-            className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
-          >
-            Neues Spiel
-          </Link>
+          {isAdmin ? (
+            <Link
+              href="/admin/matches/new"
+              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+            >
+              Neues Spiel
+            </Link>
+          ) : null}
         </div>
 
         {allMatches.length === 0 ? (
@@ -187,6 +192,11 @@ export default async function MatchesPage() {
               <tbody>
                 {allMatches.map((match) => (
                   <tr key={match.id} className="border-t border-zinc-800">
+                    {(() => {
+                      const weather = weatherByMatchId.get(match.id);
+
+                      return (
+                        <>
                     <td className="px-4 py-3">{match.matchDate.toLocaleDateString("de-DE")}</td>
                     <td className="px-4 py-3 text-zinc-300">{match.seasonName ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -204,10 +214,9 @@ export default async function MatchesPage() {
                       ))}
                     </td>
                     <td className="px-4 py-3 text-zinc-300">
-                      {weatherByMatchId.get(match.id) ? (
+                      {weather ? (
                         <>
                           {(() => {
-                            const weather = weatherByMatchId.get(match.id)!;
                             const presentation = getWeatherPresentation({
                               conditionLabel: weather.conditionLabel,
                               temperatureC: weather.temperatureC,
@@ -221,14 +230,12 @@ export default async function MatchesPage() {
                             );
                           })()}
                           <p className="text-xs text-zinc-400">
-                            {weatherByMatchId.get(match.id)?.temperatureC !== null &&
-                            weatherByMatchId.get(match.id)?.temperatureC !== undefined
-                              ? `${weatherByMatchId.get(match.id)?.temperatureC.toFixed(1)}°C`
+                            {weather.temperatureC !== null && weather.temperatureC !== undefined
+                              ? `${weather.temperatureC.toFixed(1)}°C`
                               : "—"}
                             {" · "}
-                            {weatherByMatchId.get(match.id)?.precipMm !== null &&
-                            weatherByMatchId.get(match.id)?.precipMm !== undefined
-                              ? `${weatherByMatchId.get(match.id)?.precipMm.toFixed(1)} mm`
+                            {weather.precipMm !== null && weather.precipMm !== undefined
+                              ? `${weather.precipMm.toFixed(1)} mm`
                               : "kein Niederschlag"}
                           </p>
                         </>
@@ -239,19 +246,32 @@ export default async function MatchesPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <Link
-                          href={`/admin/matches/${match.id}/participants`}
+                          href={`/admin/matches/${match.id}`}
                           className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
                         >
-                          Teilnehmer
+                          Details
                         </Link>
-                        <Link
-                          href={`/admin/matches/${match.id}/goals`}
-                          className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
-                        >
-                          Tore
-                        </Link>
+                        {isAdmin ? (
+                          <>
+                            <Link
+                              href={`/admin/matches/${match.id}/participants`}
+                              className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
+                            >
+                              Teilnehmer
+                            </Link>
+                            <Link
+                              href={`/admin/matches/${match.id}/goals`}
+                              className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
+                            >
+                              Tore
+                            </Link>
+                          </>
+                        ) : null}
                       </div>
                     </td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>

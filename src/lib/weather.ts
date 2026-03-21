@@ -41,7 +41,7 @@ function weatherCodeToLabel(code: number | null) {
 }
 
 function pickHourIndex(times: string[]) {
-  const preferredHour = 18;
+  const preferredHour = 19;
   const exactIndex = times.findIndex((time) => {
     const hour = Number(time.split("T")[1]?.slice(0, 2));
     return Number.isInteger(hour) && hour === preferredHour;
@@ -110,11 +110,7 @@ export async function fetchWeatherForMatchDate(matchDateIso: string): Promise<We
 
   const index = pickHourIndex(times);
 
-  const hourlyPrecip = data.hourly?.precipitation ?? [];
-  const precipMm =
-    hourlyPrecip.length > 0
-      ? hourlyPrecip.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
-      : null;
+  const precipMm = data.hourly?.precipitation?.[index] ?? null;
 
   const weatherCodeAtHour = data.hourly?.weather_code?.[index] ?? null;
 

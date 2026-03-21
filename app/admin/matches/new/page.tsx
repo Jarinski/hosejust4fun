@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { matches, matchWeather, seasons } from "@/src/db/schema";
+import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { fetchWeatherForMatchDate, type WeatherSnapshot } from "@/src/lib/weather";
 
 export default async function NewMatchPage({
@@ -8,6 +9,8 @@ export default async function NewMatchPage({
 }: {
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
+  await requireAdmin("/admin/matches/new");
+
   const allSeasons = await db.select().from(seasons);
   const params = await searchParams;
   const isSuccess = params.success === "1";
@@ -15,6 +18,8 @@ export default async function NewMatchPage({
 
   async function createMatch(formData: FormData) {
     "use server";
+
+    await requireAdminInAction();
 
     const seasonIdRaw = formData.get("seasonId");
     const matchDateRaw = formData.get("matchDate");

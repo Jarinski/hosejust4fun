@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import { getAdminSession } from "@/src/lib/auth";
 import { buildMatchStory } from "@/src/lib/matchStory";
 import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
@@ -70,6 +71,7 @@ export default async function MatchDetailPage({
 }) {
   const routeParams = await params;
   const queryParams = await searchParams;
+  const isAdmin = Boolean(await getAdminSession());
   const matchId = Number(routeParams.id);
 
   if (!Number.isInteger(matchId)) {
@@ -617,18 +619,22 @@ export default async function MatchDetailPage({
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
           <h2 className="mb-3 text-lg font-semibold">Aktionen</h2>
           <div className="flex flex-wrap gap-3 text-sm">
-            <Link
-              href={`/admin/matches/${match.id}/goals`}
-              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
-            >
-              Tore bearbeiten
-            </Link>
-            <Link
-              href={`/admin/matches/${match.id}/participants`}
-              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
-            >
-              Teilnehmer bearbeiten
-            </Link>
+            {isAdmin ? (
+              <>
+                <Link
+                  href={`/admin/matches/${match.id}/goals`}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+                >
+                  Tore bearbeiten
+                </Link>
+                <Link
+                  href={`/admin/matches/${match.id}/participants`}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+                >
+                  Teilnehmer bearbeiten
+                </Link>
+              </>
+            ) : null}
             <Link
               href="/admin/matches"
               className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
@@ -637,40 +643,42 @@ export default async function MatchDetailPage({
             </Link>
           </div>
 
-          <div className="mt-5 border-t border-zinc-800 pt-5">
-            <p className="mb-2 text-sm text-zinc-300">MVP verwalten</p>
+          {isAdmin ? (
+            <div className="mt-5 border-t border-zinc-800 pt-5">
+              <p className="mb-2 text-sm text-zinc-300">MVP verwalten</p>
 
-            {!mvpColumnAvailable ? (
-              <p className="text-sm text-amber-300">MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
-            ) : (
-              <>
-                {queryParams.success === "1" ? <p className="mb-2 text-sm text-green-400">MVP wurde gespeichert.</p> : null}
-                {queryParams.error === "1" ? <p className="mb-2 text-sm text-red-400">MVP konnte nicht gespeichert werden.</p> : null}
+              {!mvpColumnAvailable ? (
+                <p className="text-sm text-amber-300">MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
+              ) : (
+                <>
+                  {queryParams.success === "1" ? <p className="mb-2 text-sm text-green-400">MVP wurde gespeichert.</p> : null}
+                  {queryParams.error === "1" ? <p className="mb-2 text-sm text-red-400">MVP konnte nicht gespeichert werden.</p> : null}
 
-                <form action={saveMVP} className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-center">
-                  <input type="hidden" name="matchId" value={match.id} />
-                  <select
-                    name="mvpPlayerId"
-                    defaultValue={match.mvpPlayerId !== null ? String(match.mvpPlayerId) : ""}
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-                  >
-                    <option value="">Kein MVP</option>
-                    {participantRows.map((participant) => (
-                      <option key={participant.playerId} value={participant.playerId}>
-                        {participant.playerName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
-                  >
-                    Speichern
-                  </button>
-                </form>
-              </>
-            )}
-          </div>
+                  <form action={saveMVP} className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-center">
+                    <input type="hidden" name="matchId" value={match.id} />
+                    <select
+                      name="mvpPlayerId"
+                      defaultValue={match.mvpPlayerId !== null ? String(match.mvpPlayerId) : ""}
+                      className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    >
+                      <option value="">Kein MVP</option>
+                      {participantRows.map((participant) => (
+                        <option key={participant.playerId} value={participant.playerId}>
+                          {participant.playerName}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+                    >
+                      Speichern
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          ) : null}
         </section>
       </div>
     </main>

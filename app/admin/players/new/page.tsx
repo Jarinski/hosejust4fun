@@ -2,17 +2,22 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { players } from "@/src/db/schema";
+import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 
 export default async function NewPlayerPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  await requireAdmin("/admin/players/new");
+
   const params = await searchParams;
   const hasError = params.error === "1";
 
   async function createPlayer(formData: FormData) {
     "use server";
+
+    await requireAdminInAction();
 
     const nameRaw = formData.get("name");
     const name = String(nameRaw ?? "").trim();

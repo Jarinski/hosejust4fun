@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { matchParticipants, matches, players } from "@/src/db/schema";
+import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { recalculateMatchMvp } from "@/src/lib/mvp";
 
 export default async function MatchParticipantsPage({
@@ -13,6 +14,7 @@ export default async function MatchParticipantsPage({
 }) {
   const routeParams = await params;
   const queryParams = await searchParams;
+  await requireAdmin(`/admin/matches/${routeParams.id}/participants`);
 
   const matchId = Number(routeParams.id);
   if (!Number.isInteger(matchId)) {
@@ -63,11 +65,17 @@ export default async function MatchParticipantsPage({
   async function saveParticipants(formData: FormData) {
     "use server";
 
+    await requireAdminInAction();
+
     const matchIdRaw = formData.get("matchId");
     const targetMatchId = Number(matchIdRaw);
+    const fallbackErrorPath = `/admin/matches/${matchId}/participants?error=1`;
+    const errorPath = Number.isInteger(targetMatchId)
+      ? `/admin/matches/${targetMatchId}/participants?error=1`
+      : fallbackErrorPath;
 
     if (!Number.isInteger(targetMatchId)) {
-      redirect(`/admin/matches/${matchId}?error=1`);
+      redirect(errorPath);
     }
 
     try {
@@ -78,7 +86,7 @@ export default async function MatchParticipantsPage({
         .limit(1);
 
       if (validMatch.length === 0) {
-        redirect(`/admin/matches/${targetMatchId}/participants?error=1`);
+        throw new Error("Spiel nicht gefunden");
       }
 
       const activePlayerRows = await db
@@ -117,12 +125,19 @@ export default async function MatchParticipantsPage({
         await db.insert(matchParticipants).values(rowsToInsert);
       }
 
-      await recalculateMatchMvp(targetMatchId);
-
-      redirect(`/admin/matches/${targetMatchId}/participants?success=1`);
+      try {
+        await recalculateMatchMvp(targetMatchId);
+      } catch (error) {
+        console.error("MVP konnte nach Teilnehmer-Update nicht neu berechnet werden", {
+          matchId: targetMatchId,
+          error,
+        });
+      }
     } catch {
-      redirect(`/admin/matches/${targetMatchId}/participants?error=1`);
+      redirect(errorPath);
     }
+
+    redirect(`/admin/matches/${targetMatchId}/participants?success=1`);
   }
 
   return (

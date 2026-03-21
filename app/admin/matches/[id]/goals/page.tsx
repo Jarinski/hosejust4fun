@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
+import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { recalculateMatchMvp } from "@/src/lib/mvp";
 import { GoalsForm } from "./GoalsForm";
 
@@ -18,6 +19,7 @@ export default async function MatchGoalsPage({
 }) {
   const routeParams = await params;
   const queryParams = await searchParams;
+  await requireAdmin(`/admin/matches/${routeParams.id}/goals`);
 
   const matchId = Number(routeParams.id);
   if (!Number.isInteger(matchId)) {
@@ -73,6 +75,8 @@ export default async function MatchGoalsPage({
 
   async function saveGoals(formData: FormData) {
     "use server";
+
+    await requireAdminInAction();
 
     const matchIdRaw = formData.get("matchId");
     const targetMatchId = Number(matchIdRaw);

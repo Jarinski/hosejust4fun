@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TopNav } from "@/app/components/TopNav";
+import { getAdminSession } from "@/src/lib/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,18 +19,20 @@ export const metadata: Metadata = {
   description: "Matchday Dashboard, Verwaltung und Statistiken",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const adminSession = await getAdminSession();
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-stone-100 text-zinc-900">
-        <TopNav />
+        <TopNav isAdmin={Boolean(adminSession)} />
         <div className="flex-1">{children}</div>
       </body>
     </html>

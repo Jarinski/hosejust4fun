@@ -7,6 +7,20 @@ type TopscorerPageProps = {
   searchParams: Promise<{ seasonId?: string | string[] }>;
 };
 
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybePgError = error as { code?: string; message?: string };
+
+  if (maybePgError.code === "42703") {
+    return true;
+  }
+
+  return typeof maybePgError.message === "string" && maybePgError.message.includes(columnName);
+}
+
 export default async function TopscorerPage({ searchParams }: TopscorerPageProps) {
   const allSeasons = await db
     .select({
@@ -30,26 +44,55 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   const validSeasonId = selectedSeason?.id;
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
+  let ownGoalColumnAvailable = true;
+  let topScorers: Array<{ playerId: number; playerName: string; goals: number }> = [];
 
-  let topScorersQuery = db
-    .select({
-      playerId: players.id,
-      playerName: players.name,
-      goals: goalsCount.as("goals"),
-    })
-    .from(goalEvents)
-    .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-    .where(eq(goalEvents.isOwnGoal, false));
+  try {
+    let topScorersQuery = db
+      .select({
+        playerId: players.id,
+        playerName: players.name,
+        goals: goalsCount.as("goals"),
+      })
+      .from(goalEvents)
+      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+      .where(eq(goalEvents.isOwnGoal, false));
 
-  if (validSeasonId) {
-    topScorersQuery = topScorersQuery
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)));
+    if (validSeasonId) {
+      topScorersQuery = topScorersQuery
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)));
+    }
+
+    topScorers = await topScorersQuery
+      .groupBy(players.id, players.name)
+      .orderBy(desc(goalsCount), asc(players.name));
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
+    ownGoalColumnAvailable = false;
+
+    let topScorersQuery = db
+      .select({
+        playerId: players.id,
+        playerName: players.name,
+        goals: goalsCount.as("goals"),
+      })
+      .from(goalEvents)
+      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id));
+
+    if (validSeasonId) {
+      topScorersQuery = topScorersQuery
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(eq(matches.seasonId, validSeasonId));
+    }
+
+    topScorers = await topScorersQuery
+      .groupBy(players.id, players.name)
+      .orderBy(desc(goalsCount), asc(players.name));
   }
-
-  const topScorers = await topScorersQuery
-    .groupBy(players.id, players.name)
-    .orderBy(desc(goalsCount), asc(players.name));
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
@@ -89,6 +132,12 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
       {seasonIdParam && !selectedSeason ? (
         <p className="mb-4 text-sm text-amber-300">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
+      ) : null}
+
+      {!ownGoalColumnAvailable ? (
+        <p className="mb-4 text-sm text-amber-300">
+          Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt). Topscorer wird ohne Eigentor-Filter berechnet.
+        </p>
       ) : null}
 
       {topScorers.length === 0 ? (

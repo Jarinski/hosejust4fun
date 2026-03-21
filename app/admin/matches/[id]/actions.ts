@@ -3,8 +3,11 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { matchParticipants, matches } from "@/src/db/schema";
+import { requireAdminInAction } from "@/src/lib/auth";
 
 export async function updateMatchMVP(matchId: number, playerId: number | null) {
+  await requireAdminInAction();
+
   if (!Number.isInteger(matchId)) {
     throw new Error("Ungültige Match-ID");
   }
