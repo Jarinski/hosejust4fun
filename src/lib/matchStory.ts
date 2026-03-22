@@ -15,6 +15,7 @@ type MatchStoryInput = {
     scorerPlayerId: number;
     scorerName?: string | null;
     assistPlayerId?: number | null;
+    assistName?: string | null;
   }>;
   weather: {
     conditionLabel: string | null;
@@ -26,6 +27,8 @@ type MatchStoryInput = {
     team2Name: string;
     team1Goals: number;
     team2Goals: number;
+    scorerPlayerIds?: number[];
+    assistPlayerIds?: number[];
   }>;
 };
 
@@ -61,6 +64,37 @@ function getPreviousConsecutiveCount(teamName: string, target: TeamResult, previ
   return count;
 }
 
+function getPreviousConsecutiveNonWins(teamName: string, previousMatches: MatchStoryInput["previousMatches"]) {
+  if (!previousMatches || previousMatches.length === 0) return 0;
+
+  let count = 0;
+  for (const previousMatch of previousMatches) {
+    const result = resultForTeam(previousMatch, teamName);
+    if (result === null) continue;
+    if (result === "win") break;
+    count += 1;
+  }
+  return count;
+}
+
+function getPreviousConsecutivePlayerEvents(
+  playerId: number,
+  mode: "goal" | "assist",
+  previousMatches: MatchStoryInput["previousMatches"]
+) {
+  if (!previousMatches || previousMatches.length === 0) return 0;
+
+  let count = 0;
+  for (const previousMatch of previousMatches) {
+    const ids = mode === "goal" ? previousMatch.scorerPlayerIds : previousMatch.assistPlayerIds;
+    if (!ids || ids.length === 0) break;
+    if (!ids.includes(playerId)) break;
+    count += 1;
+  }
+
+  return count;
+}
+
 function conditionLooksRainy(conditionLabel: string | null) {
   if (!conditionLabel) return false;
   const value = conditionLabel.toLowerCase();
@@ -72,6 +106,7 @@ export function buildMatchStory(input: MatchStoryInput): string[] {
   const story: string[] = [];
 
   const goalsByScorer = new Map<number, { goals: number; name: string }>();
+  const assistsByPlayer = new Map<number, { assists: number; name: string }>();
   for (const goal of goals) {
     // Eigentore zählen nicht als normale Tore.
     if (goal.isOwnGoal) continue;
@@ -81,6 +116,14 @@ export function buildMatchStory(input: MatchStoryInput): string[] {
       goals: (existing?.goals ?? 0) + 1,
       name: goal.scorerName ?? existing?.name ?? `Spieler #${goal.scorerPlayerId}`,
     });
+
+    if (goal.assistPlayerId !== null && goal.assistPlayerId !== undefined) {
+      const existingAssist = assistsByPlayer.get(goal.assistPlayerId);
+      assistsByPlayer.set(goal.assistPlayerId, {
+        assists: (existingAssist?.assists ?? 0) + 1,
+        name: goal.assistName ?? existingAssist?.name ?? `Spieler #${goal.assistPlayerId}`,
+      });
+    }
   }
 
   const scorers = [...goalsByScorer.values()].sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name));
@@ -178,6 +221,36 @@ export function buildMatchStory(input: MatchStoryInput): string[] {
     }
     if (team2PrevLosses >= 3 && currentTeam2Result !== "loss") {
       story.push(`🛑 Serie beendet: ${match.team2Name} stoppte die Niederlagenserie.`);
+    }
+
+    const team1PrevNonWins = getPreviousConsecutiveNonWins(match.team1Name, previousMatches);
+    const team2PrevNonWins = getPreviousConsecutiveNonWins(match.team2Name, previousMatches);
+
+    if (currentTeam1Result === "win" && team1PrevNonWins >= 3) {
+      story.push(
+        `✅ Durststrecke beendet: ${match.team1Name} gewann nach ${team1PrevNonWins} sieglosen Spielen wieder.`
+      );
+    }
+    if (currentTeam2Result === "win" && team2PrevNonWins >= 3) {
+      story.push(
+        `✅ Durststrecke beendet: ${match.team2Name} gewann nach ${team2PrevNonWins} sieglosen Spielen wieder.`
+      );
+    }
+
+    for (const [playerId, scorer] of goalsByScorer.entries()) {
+      const previousScoringStreak = getPreviousConsecutivePlayerEvents(playerId, "goal", previousMatches);
+      const scoringStreak = previousScoringStreak + 1;
+      if (scoringStreak >= 3) {
+        story.push(`🎯 Serie: ${scorer.name} traf in ${scoringStreak} Spielen in Folge.`);
+      }
+    }
+
+    for (const [playerId, assister] of assistsByPlayer.entries()) {
+      const previousAssistStreak = getPreviousConsecutivePlayerEvents(playerId, "assist", previousMatches);
+      const assistStreak = previousAssistStreak + 1;
+      if (assistStreak >= 3) {
+        story.push(`🅰️ Serie: ${assister.name} gab in ${assistStreak} Spielen in Folge mindestens eine Vorlage.`);
+      }
     }
   }
 

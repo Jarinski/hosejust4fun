@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { alias } from "drizzle-orm/pg-core";
-import { asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
@@ -27,6 +27,7 @@ function formatDate(date: Date) {
 export default async function Home() {
   const mvpPlayers = alias(players, "mvp_players");
   const scorerPlayers = alias(players, "scorer_players");
+  const assistPlayers = alias(players, "assist_players");
   
   type LatestMatchGoal = {
     teamSide: "team_1" | "team_2";
@@ -34,6 +35,7 @@ export default async function Home() {
     scorerPlayerId: number;
     scorerName: string;
     assistPlayerId: number | null;
+    assistName: string | null;
   };
 
   let mvpColumnAvailable = true;
@@ -126,9 +128,11 @@ export default async function Home() {
           scorerPlayerId: goalEvents.scorerPlayerId,
           scorerName: scorerPlayers.name,
           assistPlayerId: goalEvents.assistPlayerId,
+          assistName: assistPlayers.name,
         })
         .from(goalEvents)
         .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
+        .leftJoin(assistPlayers, eq(goalEvents.assistPlayerId, assistPlayers.id))
         .where(eq(goalEvents.matchId, latestMatch.id));
     } catch {
       ownGoalColumnAvailable = false;
@@ -139,9 +143,11 @@ export default async function Home() {
           scorerPlayerId: goalEvents.scorerPlayerId,
           scorerName: scorerPlayers.name,
           assistPlayerId: goalEvents.assistPlayerId,
+          assistName: assistPlayers.name,
         })
         .from(goalEvents)
         .innerJoin(scorerPlayers, eq(goalEvents.scorerPlayerId, scorerPlayers.id))
+        .leftJoin(assistPlayers, eq(goalEvents.assistPlayerId, assistPlayers.id))
         .where(eq(goalEvents.matchId, latestMatch.id));
 
       latestMatchGoals = legacyGoals.map((goal) => ({
@@ -163,6 +169,57 @@ export default async function Home() {
         .then((rows) => rows[0] ?? null)
         .catch(() => null)
     : null;
+
+  const previousMatchesForLatest = allMatchesForSeries.slice(1);
+  const previousMatchIdsForLatest = previousMatchesForLatest.map((match) => match.id);
+  const previousGoalsForLatest =
+    previousMatchIdsForLatest.length > 0
+      ? await db
+          .select({
+            matchId: goalEvents.matchId,
+            isOwnGoal: goalEvents.isOwnGoal,
+            scorerPlayerId: goalEvents.scorerPlayerId,
+            assistPlayerId: goalEvents.assistPlayerId,
+          })
+          .from(goalEvents)
+          .where(inArray(goalEvents.matchId, previousMatchIdsForLatest))
+          .catch(async () => {
+            const legacyGoals = await db
+              .select({
+                matchId: goalEvents.matchId,
+                scorerPlayerId: goalEvents.scorerPlayerId,
+                assistPlayerId: goalEvents.assistPlayerId,
+              })
+              .from(goalEvents)
+              .where(inArray(goalEvents.matchId, previousMatchIdsForLatest));
+
+            return legacyGoals.map((goal) => ({
+              ...goal,
+              isOwnGoal: false,
+            }));
+          })
+      : [];
+
+  const previousScorerIdsByMatchId = new Map<number, number[]>();
+  const previousAssistIdsByMatchId = new Map<number, number[]>();
+
+  for (const goal of previousGoalsForLatest) {
+    if (goal.isOwnGoal) continue;
+
+    const scorerIds = previousScorerIdsByMatchId.get(goal.matchId) ?? [];
+    if (!scorerIds.includes(goal.scorerPlayerId)) {
+      scorerIds.push(goal.scorerPlayerId);
+      previousScorerIdsByMatchId.set(goal.matchId, scorerIds);
+    }
+
+    if (goal.assistPlayerId !== null) {
+      const assistIds = previousAssistIdsByMatchId.get(goal.matchId) ?? [];
+      if (!assistIds.includes(goal.assistPlayerId)) {
+        assistIds.push(goal.assistPlayerId);
+        previousAssistIdsByMatchId.set(goal.matchId, assistIds);
+      }
+    }
+  }
 
   const latestWeatherPresentation = latestMatchWeather
     ? getWeatherPresentation({
@@ -241,11 +298,13 @@ export default async function Home() {
         },
         goals: latestMatchGoals,
         weather: latestMatchWeather,
-        previousMatches: allMatchesForSeries.slice(1).map((match) => ({
+        previousMatches: previousMatchesForLatest.map((match) => ({
           team1Name: match.team1Name,
           team2Name: match.team2Name,
           team1Goals: match.team1Score,
           team2Goals: match.team2Score,
+          scorerPlayerIds: previousScorerIdsByMatchId.get(match.id) ?? [],
+          assistPlayerIds: previousAssistIdsByMatchId.get(match.id) ?? [],
         })),
       }).slice(0, ownGoalColumnAvailable ? 3 : 2)
     : [];

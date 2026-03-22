@@ -279,6 +279,7 @@ export default async function MatchDetailPage({
 
   const previousMatches = await db
     .select({
+      id: matches.id,
       team1Name: matches.team1Name,
       team2Name: matches.team2Name,
       team1Goals: matches.team1Score,
@@ -298,6 +299,56 @@ export default async function MatchDetailPage({
     )
     .orderBy(desc(matches.matchDate))
     .limit(30);
+
+  const previousMatchIds = previousMatches.map((previousMatch) => previousMatch.id);
+  const previousGoals =
+    previousMatchIds.length > 0
+      ? await db
+          .select({
+            matchId: goalEvents.matchId,
+            isOwnGoal: goalEvents.isOwnGoal,
+            scorerPlayerId: goalEvents.scorerPlayerId,
+            assistPlayerId: goalEvents.assistPlayerId,
+          })
+          .from(goalEvents)
+          .where(inArray(goalEvents.matchId, previousMatchIds))
+          .catch(async () => {
+            const legacyGoals = await db
+              .select({
+                matchId: goalEvents.matchId,
+                scorerPlayerId: goalEvents.scorerPlayerId,
+                assistPlayerId: goalEvents.assistPlayerId,
+              })
+              .from(goalEvents)
+              .where(inArray(goalEvents.matchId, previousMatchIds));
+
+            return legacyGoals.map((goal) => ({
+              ...goal,
+              isOwnGoal: false,
+            }));
+          })
+      : [];
+
+  const previousScorerIdsByMatchId = new Map<number, number[]>();
+  const previousAssistIdsByMatchId = new Map<number, number[]>();
+
+  for (const goal of previousGoals) {
+    if (goal.isOwnGoal) continue;
+
+    const scorerIds = previousScorerIdsByMatchId.get(goal.matchId) ?? [];
+    if (!scorerIds.includes(goal.scorerPlayerId)) {
+      scorerIds.push(goal.scorerPlayerId);
+      previousScorerIdsByMatchId.set(goal.matchId, scorerIds);
+    }
+
+    if (goal.assistPlayerId !== null) {
+      const assistIds = previousAssistIdsByMatchId.get(goal.matchId) ?? [];
+      if (!assistIds.includes(goal.assistPlayerId)) {
+        assistIds.push(goal.assistPlayerId);
+        previousAssistIdsByMatchId.set(goal.matchId, assistIds);
+      }
+    }
+  }
 
   const ownGoalsCount = sortedGoals.filter((goal) => goal.isOwnGoal).length;
   const assistsCount = sortedGoals.filter((goal) => !goal.isOwnGoal && goal.assistPlayerId !== null).length;
@@ -350,13 +401,24 @@ export default async function MatchDetailPage({
       scorerPlayerId: goal.scorerPlayerId,
       scorerName: playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`,
       assistPlayerId: goal.assistPlayerId,
+      assistName:
+        goal.assistPlayerId !== null
+          ? (playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`)
+          : null,
     })),
     weather: {
       conditionLabel: match.weatherCondition,
       temperatureC: match.weatherTemperatureC,
       precipMm: match.weatherPrecipMm,
     },
-    previousMatches,
+    previousMatches: previousMatches.map((previousMatch) => ({
+      team1Name: previousMatch.team1Name,
+      team2Name: previousMatch.team2Name,
+      team1Goals: previousMatch.team1Goals,
+      team2Goals: previousMatch.team2Goals,
+      scorerPlayerIds: previousScorerIdsByMatchId.get(previousMatch.id) ?? [],
+      assistPlayerIds: previousAssistIdsByMatchId.get(previousMatch.id) ?? [],
+    })),
   });
 
   async function saveMVP(formData: FormData) {

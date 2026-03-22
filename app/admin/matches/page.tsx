@@ -131,6 +131,27 @@ export default async function MatchesPage() {
   }
 
   const storiesByMatchId = new Map<number, string[]>();
+  const scorerIdsByMatchId = new Map<number, number[]>();
+  const assistIdsByMatchId = new Map<number, number[]>();
+
+  for (const goal of allGoals) {
+    if (goal.isOwnGoal) continue;
+
+    const scorerIds = scorerIdsByMatchId.get(goal.matchId) ?? [];
+    if (!scorerIds.includes(goal.scorerPlayerId)) {
+      scorerIds.push(goal.scorerPlayerId);
+      scorerIdsByMatchId.set(goal.matchId, scorerIds);
+    }
+
+    if (goal.assistPlayerId !== null) {
+      const assistIds = assistIdsByMatchId.get(goal.matchId) ?? [];
+      if (!assistIds.includes(goal.assistPlayerId)) {
+        assistIds.push(goal.assistPlayerId);
+        assistIdsByMatchId.set(goal.matchId, assistIds);
+      }
+    }
+  }
+
   allMatches.forEach((match, index) => {
     const story = buildMatchStory({
       match: {
@@ -154,6 +175,8 @@ export default async function MatchesPage() {
         team2Name: previousMatch.team2Name,
         team1Goals: previousMatch.team1Score,
         team2Goals: previousMatch.team2Score,
+        scorerPlayerIds: scorerIdsByMatchId.get(previousMatch.id) ?? [],
+        assistPlayerIds: assistIdsByMatchId.get(previousMatch.id) ?? [],
       })),
     });
 
