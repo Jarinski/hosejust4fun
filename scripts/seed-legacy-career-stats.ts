@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { db } from "../src/db";
 import { legacyPlayerCareerStats } from "../src/db/schema";
 
@@ -540,8 +541,15 @@ const data = [
 async function main() {
   console.log("[start] Seeding legacy career stats...");
 
+  const rows = data.map(({ assistsPerGame: _assistsPerGame, winsRatio, lossesRatio, ...row }) => ({
+    ...row,
+    id: randomUUID(),
+    winsRatio: winsRatio.toString(),
+    lossesRatio: lossesRatio.toString(),
+  }));
+
   await db.delete(legacyPlayerCareerStats);
-  await db.insert(legacyPlayerCareerStats).values(data);
+  await db.insert(legacyPlayerCareerStats).values(rows);
 
   console.log(`[done] Inserted ${data.length} legacy career stats rows`);
 }
