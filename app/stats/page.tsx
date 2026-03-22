@@ -2,6 +2,46 @@ import Link from "next/link";
 
 const publicStatsPages = [
   {
+    title: "Topscorer",
+    href: "/stats/topscorer",
+    description: "Die meisten Tore pro Spieler",
+  },
+  {
+    title: "Top-Assists",
+    href: "/stats/topassists",
+    description: "Die meisten Vorlagen pro Spieler",
+  },
+  {
+    title: "Scorer-Assist-Kombinationen",
+    href: "/stats/scorer-assist-combos",
+    description: "Wer legt wem am häufigsten auf",
+  },
+  {
+    title: "Duo-Performance",
+    href: "/stats/duo-performance",
+    description: "Wie gut 2 Spieler zusammen performen (Tore & Spiele)",
+  },
+  {
+    title: "Trio-Performance",
+    href: "/stats/trio-performance",
+    description: "Wie gut 3 Spieler zusammen performen",
+  },
+  {
+    title: "Gegentor-Statistik",
+    href: "/stats/goals-against",
+    description: "Wer kassiert die meisten Gegentore pro Spiel und welche Team-Kombis sind anfällig",
+  },
+  {
+    title: "Wetter-Statistik",
+    href: "/stats/weather",
+    description: "Spielerleistungen bei Kälte, Regen und Schlechtwetter",
+  },
+  {
+    title: "Tor-Momente",
+    href: "/stats/goal-moments",
+    description: "1:0-Schützen, Ausgleichstreffer sowie frühe/späte Tore",
+  },
+  {
     title: "Legacy All-Time",
     href: "/stats/legacy",
     description: "Historische Karrierewerte (Tore, Vorlagen, Punkte, Einsätze)",
@@ -30,7 +70,7 @@ export default function PublicStatsOverviewPage() {
 
         <h1 className="mb-2 text-2xl font-semibold">Statistiken</h1>
         <p className="mb-5 text-sm text-zinc-600">
-          Öffentliche Auswertung inkl. Legacy-Daten.
+          Öffentliche Auswertungen (Modern + Legacy).
         </p>
 
         <ul className="space-y-3">
