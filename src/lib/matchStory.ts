@@ -98,7 +98,7 @@ function getPreviousConsecutivePlayerEvents(
 function conditionLooksRainy(conditionLabel: string | null) {
   if (!conditionLabel) return false;
   const value = conditionLabel.toLowerCase();
-  return ["regen", "niesel", "schauer", "drizzle", "rain", "shower"].some((term) => value.includes(term));
+  return ["regen", "rain"].some((term) => value.includes(term));
 }
 
 export function buildMatchStory(input: MatchStoryInput): string[] {
@@ -136,7 +136,7 @@ export function buildMatchStory(input: MatchStoryInput): string[] {
   }
 
   if (weather) {
-    const isRain = (weather.precipMm ?? 0) > 0 || conditionLooksRainy(weather.conditionLabel);
+    const isRain = (weather.precipMm ?? 0) >= 1 || conditionLooksRainy(weather.conditionLabel);
     if (isRain) {
       story.push("🌧️ Regen prägte die Bedingungen auf dem Platz.");
     }

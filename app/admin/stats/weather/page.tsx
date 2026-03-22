@@ -411,7 +411,7 @@ export default async function WeatherStatsPage() {
 
           <RankingCard
             title="Regen-Spezialisten"
-            subtitle="Topscorer in Spielen mit Regen (Niederschlag > 0 oder Regen-Bedingung)"
+            subtitle="Topscorer in Spielen mit Regen (Niederschlag ≥ 1 mm oder Regen-Bedingung)"
             valueLabel="Tore"
             rows={rainTopScorers}
           />

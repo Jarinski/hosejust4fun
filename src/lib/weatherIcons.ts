@@ -25,6 +25,10 @@ const DRIZZLE_REGEX = /(drizzle|niesel|schauer)/i;
 const CLOUD_REGEX = /(bew[öo]lkt|wolkig|cloud|overcast|nebel|fog|mist)/i;
 const PARTLY_SUNNY_REGEX = /(heiter|teilweise sonnig|partly|sunny intervals)/i;
 const SUNNY_REGEX = /(sonnig|klar|clear|sunny)/i;
+const RAIN_MIN_MM = 1;
+const MODERATE_RAIN_MIN_MM = 2.5;
+const HEAVY_RAIN_MIN_MM = 10;
+const STORM_RAIN_MIN_MM = 25;
 
 function normalizeLabel(value: string | null | undefined) {
   return (value ?? "").trim();
@@ -33,7 +37,7 @@ function normalizeLabel(value: string | null | undefined) {
 export function isRainLikeWeather(input: WeatherIconInput) {
   const label = normalizeLabel(input.conditionLabel).toLowerCase();
   const precip = input.precipMm ?? null;
-  return THUNDER_REGEX.test(label) || RAIN_REGEX.test(label) || DRIZZLE_REGEX.test(label) || (precip !== null && precip > 0);
+  return THUNDER_REGEX.test(label) || RAIN_REGEX.test(label) || (precip !== null && precip >= RAIN_MIN_MM);
 }
 
 export function isSunnyLikeWeather(input: WeatherIconInput) {
@@ -54,9 +58,9 @@ export function getWeatherPresentation(input: WeatherIconInput): WeatherIconResu
   const wind = input.windKph ?? input.windKmh ?? null;
 
   const hasThunder = THUNDER_REGEX.test(normalizedLabel);
-  const hasRain = RAIN_REGEX.test(normalizedLabel) || (precip !== null && precip >= 0.7);
+  const hasRain = RAIN_REGEX.test(normalizedLabel) || (precip !== null && precip >= RAIN_MIN_MM);
   const hasDrizzle =
-    DRIZZLE_REGEX.test(normalizedLabel) || (precip !== null && precip > 0 && precip < 0.7);
+    DRIZZLE_REGEX.test(normalizedLabel) || (precip !== null && precip > 0 && precip < RAIN_MIN_MM);
   const hasClouds = CLOUD_REGEX.test(normalizedLabel);
   const isPartlySunny = PARTLY_SUNNY_REGEX.test(normalizedLabel);
   const isSunny = SUNNY_REGEX.test(normalizedLabel);
@@ -73,7 +77,15 @@ export function getWeatherPresentation(input: WeatherIconInput): WeatherIconResu
     className = "text-violet-300";
   } else if (hasRain) {
     icon = "🌧️";
-    displayLabel = "Regen";
+    if (precip !== null && precip >= STORM_RAIN_MIN_MM) {
+      displayLabel = "Unwetterregen";
+    } else if (precip !== null && precip >= HEAVY_RAIN_MIN_MM) {
+      displayLabel = "Starkregen";
+    } else if (precip !== null && precip >= MODERATE_RAIN_MIN_MM) {
+      displayLabel = "Mäßiger Regen";
+    } else {
+      displayLabel = "Leichter Regen";
+    }
     tone = "rain";
     className = "text-sky-300";
   } else if (hasDrizzle) {
