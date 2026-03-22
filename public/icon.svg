@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fussball">
+  <circle cx="32" cy="32" r="31" fill="#ffffff" stroke="#111827" stroke-width="2" />
+  <polygon points="32,18 22,25 26,37 38,37 42,25" fill="#111827" />
+  <polygon points="22,25 14,22 10,31 18,38 26,37" fill="#111827" />
+  <polygon points="42,25 50,22 54,31 46,38 38,37" fill="#111827" />
+  <polygon points="18,38 12,46 22,52 30,46 26,37" fill="#111827" />
+  <polygon points="46,38 52,46 42,52 34,46 38,37" fill="#111827" />
+</svg>
