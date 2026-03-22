@@ -24,6 +24,18 @@ type ModernPlayerRow = {
   assists: number;
 };
 
+type PublicPlayerRow = ModernPlayerRow & {
+  legacyGames: number;
+  legacyGoals: number;
+  legacyAssists: number;
+  legacyPoints: number;
+  modernPoints: number;
+  totalGames: number;
+  totalGoals: number;
+  totalAssists: number;
+  totalPoints: number;
+};
+
 async function getModernPlayerStats(): Promise<ModernPlayerRow[]> {
   const [allPlayers, gamesByPlayer, goalsByPlayer, assistsByPlayer] = await Promise.all([
     db
@@ -116,6 +128,32 @@ export default async function PlayerStatsPage() {
     getModernPlayerStats(),
   ]);
 
+  const legacyByPlayerName = new Map<string, LegacyPlayerRow>(
+    legacyStats.map((row) => [row.playerName, row])
+  );
+
+  const publicPlayerStats: PublicPlayerRow[] = modernStats.map((player) => {
+    const legacy = legacyByPlayerName.get(player.playerName);
+    const legacyGames = legacy?.games ?? 0;
+    const legacyGoals = legacy?.goals ?? 0;
+    const legacyAssists = legacy?.assists ?? 0;
+    const legacyPoints = legacy?.points ?? 0;
+    const modernPoints = player.goals + player.assists;
+
+    return {
+      ...player,
+      legacyGames,
+      legacyGoals,
+      legacyAssists,
+      legacyPoints,
+      modernPoints,
+      totalGames: legacyGames + player.games,
+      totalGoals: legacyGoals + player.goals,
+      totalAssists: legacyAssists + player.assists,
+      totalPoints: legacyPoints + modernPoints,
+    };
+  });
+
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
@@ -158,31 +196,51 @@ export default async function PlayerStatsPage() {
           <section className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
             <h2 className="text-lg font-semibold text-zinc-900">Moderne Statistiken</h2>
 
-            {modernStats.length === 0 ? (
+            {publicPlayerStats.length === 0 ? (
               <p className="mt-3 text-sm text-zinc-500">Keine modernen Spielerstatistiken vorhanden.</p>
             ) : (
-              <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-300 bg-white">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-stone-100 text-zinc-600">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Spieler</th>
-                      <th className="px-3 py-2 text-left">Spiele</th>
-                      <th className="px-3 py-2 text-left">Tore</th>
-                      <th className="px-3 py-2 text-left">Vorlagen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {modernStats.map((player) => (
-                      <tr key={player.playerId} className="border-t border-zinc-300">
-                        <td className="px-3 py-2 text-zinc-900">{player.playerName}</td>
-                        <td className="px-3 py-2">{player.games}</td>
-                        <td className="px-3 py-2">{player.goals}</td>
-                        <td className="px-3 py-2">{player.assists}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="mt-3 space-y-3">
+                {publicPlayerStats.map((player) => (
+                  <li key={player.playerId} className="rounded-lg border border-zinc-300 bg-white p-3">
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+                      <p className="font-medium text-zinc-900">{player.playerName}</p>
+                      <p className="text-sm text-zinc-700">Modern Tore: <span className="font-semibold text-zinc-900">{player.goals}</span></p>
+                      <p className="text-sm text-zinc-700">Legacy Tore: <span className="font-semibold text-zinc-900">{player.legacyGoals}</span></p>
+                      <p className="text-sm text-zinc-700">Gesamt Tore: <span className="font-semibold text-zinc-900">{player.totalGoals}</span></p>
+                    </div>
+
+                    <details className="mt-3 rounded-md border border-zinc-300 bg-stone-50 p-2.5">
+                      <summary className="cursor-pointer text-sm font-medium text-zinc-800">Details</summary>
+
+                      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                        <section className="rounded-md border border-zinc-300 bg-white p-3 text-sm">
+                          <h3 className="font-semibold text-zinc-900">Legacy</h3>
+                          <p className="mt-1 text-zinc-700">Einsätze: <span className="font-medium text-zinc-900">{player.legacyGames}</span></p>
+                          <p className="text-zinc-700">Tore: <span className="font-medium text-zinc-900">{player.legacyGoals}</span></p>
+                          <p className="text-zinc-700">Vorlagen: <span className="font-medium text-zinc-900">{player.legacyAssists}</span></p>
+                          <p className="text-zinc-700">Punkte: <span className="font-medium text-zinc-900">{player.legacyPoints}</span></p>
+                        </section>
+
+                        <section className="rounded-md border border-zinc-300 bg-white p-3 text-sm">
+                          <h3 className="font-semibold text-zinc-900">Modern</h3>
+                          <p className="mt-1 text-zinc-700">Einsätze: <span className="font-medium text-zinc-900">{player.games}</span></p>
+                          <p className="text-zinc-700">Tore: <span className="font-medium text-zinc-900">{player.goals}</span></p>
+                          <p className="text-zinc-700">Vorlagen: <span className="font-medium text-zinc-900">{player.assists}</span></p>
+                          <p className="text-zinc-700">Punkte: <span className="font-medium text-zinc-900">{player.modernPoints}</span></p>
+                        </section>
+
+                        <section className="rounded-md border border-zinc-300 bg-white p-3 text-sm">
+                          <h3 className="font-semibold text-zinc-900">Gesamt</h3>
+                          <p className="mt-1 text-zinc-700">Einsätze: <span className="font-medium text-zinc-900">{player.totalGames}</span></p>
+                          <p className="text-zinc-700">Tore: <span className="font-medium text-zinc-900">{player.totalGoals}</span></p>
+                          <p className="text-zinc-700">Vorlagen: <span className="font-medium text-zinc-900">{player.totalAssists}</span></p>
+                          <p className="text-zinc-700">Punkte: <span className="font-medium text-zinc-900">{player.totalPoints}</span></p>
+                        </section>
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </div>
