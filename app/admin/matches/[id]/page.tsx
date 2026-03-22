@@ -48,6 +48,74 @@ function incrementComboCounter(map: Map<string, number>, assistPlayerId: number,
   return next;
 }
 
+function formatStatUnit(count: number, mode: "goal" | "assist") {
+  if (mode === "goal") {
+    return count === 1 ? "Tor" : "Tore";
+  }
+
+  return count === 1 ? "Assist" : "Assists";
+}
+
+function getStatRaceNote({
+  mode,
+  playerId,
+  playerName,
+  beforeTotal,
+  afterTotal,
+  totalsAfter,
+  playerNameById,
+}: {
+  mode: "goal" | "assist";
+  playerId: number;
+  playerName: string;
+  beforeTotal: number;
+  afterTotal: number;
+  totalsAfter: Map<number, number>;
+  playerNameById: Map<number, string>;
+}) {
+  const allOthers = [...totalsAfter.entries()]
+    .filter(([id]) => id !== playerId)
+    .map(([id, total]) => ({ id, total }));
+
+  const overtakenCandidates = allOthers
+    .filter((entry) => entry.total === beforeTotal)
+    .sort((a, b) => a.id - b.id);
+
+  if (overtakenCandidates.length > 0) {
+    const target = overtakenCandidates[0]!;
+    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
+
+    return `📈 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
+  }
+
+  const tiedCandidates = allOthers
+    .filter((entry) => entry.total === afterTotal)
+    .sort((a, b) => a.id - b.id);
+
+  if (tiedCandidates.length > 0) {
+    const target = tiedCandidates[0]!;
+    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
+
+    return `🤝 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
+  }
+
+  const nearestAhead = allOthers
+    .filter((entry) => entry.total > afterTotal)
+    .sort((a, b) => a.total - b.total || a.id - b.id)[0];
+
+  if (!nearestAhead) {
+    return null;
+  }
+
+  const diff = nearestAhead.total - afterTotal;
+  if (diff === 1) {
+    const targetName = playerNameById.get(nearestAhead.id) ?? `Spieler #${nearestAhead.id}`;
+    return `👀 ${playerName} steht bei ${afterTotal} ${formatStatUnit(afterTotal, mode)} und ist ${targetName} (${nearestAhead.total}) dicht auf den Fersen.`;
+  }
+
+  return null;
+}
+
 function getGermanPossessiveName(name: string) {
   const normalized = name.trim();
   if (normalized.length === 0) return "Spielers";
@@ -369,6 +437,8 @@ export default async function MatchDetailPage({
   }
 
   let previousAssistCombosAllTime = new Map<string, number>();
+  let previousGoalsByPlayerAllTime = new Map<number, number>();
+  let previousAssistsByPlayerAllTime = new Map<number, number>();
 
   try {
     const previousAssistRows = await db
@@ -411,6 +481,63 @@ export default async function MatchDetailPage({
       incrementComboCounter(acc, goal.assistPlayerId, goal.scorerPlayerId);
       return acc;
     }, new Map<string, number>());
+  }
+
+  try {
+    const previousAllTimeScoringRows = await db
+      .select({
+        isOwnGoal: goalEvents.isOwnGoal,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(historicalBoundaryFilter);
+
+    previousGoalsByPlayerAllTime = previousAllTimeScoringRows.reduce((acc, goal) => {
+      if (goal.isOwnGoal) {
+        return acc;
+      }
+
+      incrementMapCounter(acc, goal.scorerPlayerId);
+      return acc;
+    }, new Map<number, number>());
+
+    previousAssistsByPlayerAllTime = previousAllTimeScoringRows.reduce((acc, goal) => {
+      if (goal.isOwnGoal || goal.assistPlayerId === null) {
+        return acc;
+      }
+
+      incrementMapCounter(acc, goal.assistPlayerId);
+      return acc;
+    }, new Map<number, number>());
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
+    const previousAllTimeScoringRowsLegacy = await db
+      .select({
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(historicalBoundaryFilter);
+
+    previousGoalsByPlayerAllTime = previousAllTimeScoringRowsLegacy.reduce((acc, goal) => {
+      incrementMapCounter(acc, goal.scorerPlayerId);
+      return acc;
+    }, new Map<number, number>());
+
+    previousAssistsByPlayerAllTime = previousAllTimeScoringRowsLegacy.reduce((acc, goal) => {
+      if (goal.assistPlayerId === null) {
+        return acc;
+      }
+
+      incrementMapCounter(acc, goal.assistPlayerId);
+      return acc;
+    }, new Map<number, number>());
   }
 
   const previousSeasonEarlyGoalsCount = previousSeasonGoals.filter(
@@ -557,6 +684,8 @@ export default async function MatchDetailPage({
       const statisticNotes: string[] = [];
       const firstGoalsByScorer = new Map(acc.firstGoalsByScorer);
       const assistCombosAllTime = new Map(acc.assistCombosAllTime);
+      const goalsByPlayerAllTime = new Map(acc.goalsByPlayerAllTime);
+      const assistsByPlayerAllTime = new Map(acc.assistsByPlayerAllTime);
       let seasonEarlyGoals = acc.seasonEarlyGoals;
       let seasonLateGoals = acc.seasonLateGoals;
 
@@ -572,6 +701,22 @@ export default async function MatchDetailPage({
               `📊 Saisonzähler: ${seasonEarlyGoals}. Tor in den ersten 15 Minuten.`
             );
           }
+        }
+
+        const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+        const scorerBeforeTotal = goalsByPlayerAllTime.get(goal.scorerPlayerId) ?? 0;
+        const scorerAfterTotal = incrementMapCounter(goalsByPlayerAllTime, goal.scorerPlayerId);
+        const scorerRaceNote = getStatRaceNote({
+          mode: "goal",
+          playerId: goal.scorerPlayerId,
+          playerName: scorerName,
+          beforeTotal: scorerBeforeTotal,
+          afterTotal: scorerAfterTotal,
+          totalsAfter: goalsByPlayerAllTime,
+          playerNameById,
+        });
+        if (scorerRaceNote) {
+          statisticNotes.push(scorerRaceNote);
         }
 
         if (isLateGoalMinute(goal.minute)) {
@@ -603,6 +748,22 @@ export default async function MatchDetailPage({
         }
 
         if (goal.assistPlayerId !== null) {
+          const assistName = playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`;
+          const assistBeforeTotal = assistsByPlayerAllTime.get(goal.assistPlayerId) ?? 0;
+          const assistAfterTotal = incrementMapCounter(assistsByPlayerAllTime, goal.assistPlayerId);
+          const assistRaceNote = getStatRaceNote({
+            mode: "assist",
+            playerId: goal.assistPlayerId,
+            playerName: assistName,
+            beforeTotal: assistBeforeTotal,
+            afterTotal: assistAfterTotal,
+            totalsAfter: assistsByPlayerAllTime,
+            playerNameById,
+          });
+          if (assistRaceNote) {
+            statisticNotes.push(assistRaceNote);
+          }
+
           const comboCount = incrementComboCounter(
             assistCombosAllTime,
             goal.assistPlayerId,
@@ -632,6 +793,8 @@ export default async function MatchDetailPage({
         seasonLateGoals,
         firstGoalsByScorer,
         assistCombosAllTime,
+        goalsByPlayerAllTime,
+        assistsByPlayerAllTime,
         goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}`, statisticNotes }],
       };
     },
@@ -642,6 +805,8 @@ export default async function MatchDetailPage({
       seasonLateGoals: previousSeasonLateGoalsCount,
       firstGoalsByScorer: new Map(previousSeasonFirstGoalsByScorer),
       assistCombosAllTime: new Map(previousAssistCombosAllTime),
+      goalsByPlayerAllTime: new Map(previousGoalsByPlayerAllTime),
+      assistsByPlayerAllTime: new Map(previousAssistsByPlayerAllTime),
       goals: [] as TimelineGoalView[],
     }
   );
