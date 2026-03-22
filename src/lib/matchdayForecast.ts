@@ -113,7 +113,7 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
   }
 
   if (lines.length < 3) {
-    lines.push("🎯 Ohne feste Teams bleibt es wild – heute kann wirklich jeder der Held des Abends werden.");
+    lines.push("Wildes Teilnehmerfeld, keine Prognose möglich, jeder kann zum Helden werden.");
   }
 
   return lines;
