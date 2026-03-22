@@ -2,7 +2,9 @@ import { asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import {
+  goalEvents,
   matchParticipants,
+  matchWeather,
   matchdayParticipants,
   matchdays,
   matches,
@@ -13,7 +15,7 @@ import {
   fetchWeatherForMatchDate,
   getUpcomingMondayIsoInBerlin,
 } from "@/src/lib/weather";
-import { getWeatherPresentation } from "@/src/lib/weatherIcons";
+import { getWeatherPresentation, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 
 async function ensureMatchdayTables() {
@@ -41,6 +43,42 @@ function formatIsoDate(isoDate: string) {
     dateStyle: "full",
     timeZone: "Europe/Berlin",
   }).format(new Date(`${isoDate}T00:00:00`));
+}
+
+type GoalRow = {
+  matchId: number;
+  scorerPlayerId: number;
+  assistPlayerId: number | null;
+  isOwnGoal: boolean;
+};
+
+async function loadGoalsForMatches(matchIds: number[]): Promise<GoalRow[]> {
+  if (matchIds.length === 0) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select({
+        matchId: goalEvents.matchId,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        isOwnGoal: goalEvents.isOwnGoal,
+      })
+      .from(goalEvents)
+      .where(inArray(goalEvents.matchId, matchIds));
+  } catch {
+    const legacyGoals = await db
+      .select({
+        matchId: goalEvents.matchId,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+      })
+      .from(goalEvents)
+      .where(inArray(goalEvents.matchId, matchIds));
+
+    return legacyGoals.map((goal) => ({ ...goal, isOwnGoal: false }));
+  }
 }
 
 export default async function MatchdayPage({
@@ -214,6 +252,109 @@ export default async function MatchdayPage({
         })[0] ?? null
     : null;
 
+  const historicalWeatherRows =
+    historicalMatchIds.length > 0
+      ? await db
+          .select({
+            matchId: matchWeather.matchId,
+            temperatureC: matchWeather.temperatureC,
+            precipMm: matchWeather.precipMm,
+            conditionLabel: matchWeather.conditionLabel,
+          })
+          .from(matchWeather)
+          .where(inArray(matchWeather.matchId, historicalMatchIds))
+      : [];
+
+  const isUpcomingCold = weather.temperatureC !== null && weather.temperatureC < 10;
+  const isUpcomingSunny = isSunnyLikeWeather({
+    conditionLabel: weather.conditionLabel,
+    precipMm: weather.precipMm,
+    temperatureC: weather.temperatureC,
+  });
+
+  const relevantWeatherMatchIds = historicalWeatherRows
+    .filter((row) => {
+      if (isUpcomingCold) {
+        return row.temperatureC !== null && row.temperatureC < 10;
+      }
+
+      if (isUpcomingSunny) {
+        return isSunnyLikeWeather({
+          conditionLabel: row.conditionLabel,
+          precipMm: row.precipMm,
+          temperatureC: row.temperatureC,
+        });
+      }
+
+      return false;
+    })
+    .map((row) => row.matchId);
+
+  const relevantMatchIdSet = new Set(relevantWeatherMatchIds);
+
+  const relevantParticipants = historicalParticipants.filter((participant) =>
+    relevantMatchIdSet.has(participant.matchId)
+  );
+
+  const relevantGoals = await loadGoalsForMatches(relevantWeatherMatchIds);
+
+  const gamesByPlayer = new Map<number, number>();
+  const uniqueGameKeys = new Set<string>();
+  for (const participant of relevantParticipants) {
+    if (!selectedSet.has(participant.playerId)) continue;
+    const key = `${participant.playerId}-${participant.matchId}`;
+    if (uniqueGameKeys.has(key)) continue;
+    uniqueGameKeys.add(key);
+    gamesByPlayer.set(participant.playerId, (gamesByPlayer.get(participant.playerId) ?? 0) + 1);
+  }
+
+  const goalsByPlayer = new Map<number, number>();
+  const assistsByPlayer = new Map<number, number>();
+  for (const goal of relevantGoals) {
+    if (goal.isOwnGoal) continue;
+
+    if (selectedSet.has(goal.scorerPlayerId)) {
+      goalsByPlayer.set(goal.scorerPlayerId, (goalsByPlayer.get(goal.scorerPlayerId) ?? 0) + 1);
+    }
+
+    if (goal.assistPlayerId !== null && selectedSet.has(goal.assistPlayerId)) {
+      assistsByPlayer.set(goal.assistPlayerId, (assistsByPlayer.get(goal.assistPlayerId) ?? 0) + 1);
+    }
+  }
+
+  function getTopLeader(valuesByPlayer: Map<number, number>) {
+    const ranked = Array.from(valuesByPlayer.entries())
+      .map(([playerId, value]) => {
+        const games = gamesByPlayer.get(playerId) ?? 0;
+        const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
+        return {
+          name,
+          value,
+          games,
+          perGame: games > 0 ? value / games : 0,
+        };
+      })
+      .filter((row) => row.games > 0 && row.value > 0)
+      .sort((a, b) => {
+        if (b.perGame !== a.perGame) return b.perGame - a.perGame;
+        if (b.value !== a.value) return b.value - a.value;
+        if (b.games !== a.games) return b.games - a.games;
+        return a.name.localeCompare(b.name, "de");
+      });
+
+    return ranked[0] ?? null;
+  }
+
+  const weatherPerformance =
+    (isUpcomingCold || isUpcomingSunny) && relevantWeatherMatchIds.length > 0
+      ? {
+          condition: isUpcomingCold ? ("cold" as const) : ("sunny" as const),
+          sampleMatches: relevantWeatherMatchIds.length,
+          topScorer: getTopLeader(goalsByPlayer),
+          topAssist: getTopLeader(assistsByPlayer),
+        }
+      : null;
+
   const weatherPresentation = getWeatherPresentation({
     conditionLabel: weather.conditionLabel,
     temperatureC: weather.temperatureC,
@@ -226,6 +367,7 @@ export default async function MatchdayPage({
     weather,
     strongestDuo,
     returningPlayers,
+    weatherPerformance,
   });
 
   async function saveMatchdayParticipants(formData: FormData) {

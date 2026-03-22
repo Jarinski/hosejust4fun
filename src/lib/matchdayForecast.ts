@@ -19,24 +19,30 @@ type ReturningPlayer = {
   missedMatches: number;
 };
 
+type WeatherPerformanceLeader = {
+  name: string;
+  value: number;
+  games: number;
+  perGame: number;
+};
+
+type WeatherPerformanceInsight = {
+  condition: "cold" | "sunny";
+  sampleMatches: number;
+  topScorer: WeatherPerformanceLeader | null;
+  topAssist: WeatherPerformanceLeader | null;
+};
+
 type MatchdayForecastInput = {
   selectedPlayers: SelectedPlayer[];
   weather: WeatherSnapshot;
   strongestDuo: DuoForecast | null;
   returningPlayers: ReturningPlayer[];
+  weatherPerformance: WeatherPerformanceInsight | null;
 };
 
-function normalizeName(value: string) {
-  return value.toLocaleLowerCase("de-DE");
-}
-
-function hasPlayerLike(players: SelectedPlayer[], needle: string) {
-  const normalizedNeedle = normalizeName(needle);
-  return players.some((player) => normalizeName(player.name).includes(normalizedNeedle));
-}
-
 export function buildMatchdayForecast(input: MatchdayForecastInput) {
-  const { selectedPlayers, weather, strongestDuo, returningPlayers } = input;
+  const { selectedPlayers, weather, strongestDuo, returningPlayers, weatherPerformance } = input;
   const lines: string[] = [];
 
   if (selectedPlayers.length === 0) {
@@ -58,14 +64,6 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
     );
   }
 
-  const hasBjorn = hasPlayerLike(selectedPlayers, "björn") || hasPlayerLike(selectedPlayers, "bjoern");
-  const hasLars = hasPlayerLike(selectedPlayers, "lars");
-  if (hasBjorn && hasLars) {
-    lines.push(
-      "🧪 Spezialprognose: Björn & Lars sind beide gemeldet – Statistik sagt: zusammen meistens gefährlich, gefühlt sowieso immer 70%."
-    );
-  }
-
   for (const returning of returningPlayers.slice(0, 2)) {
     lines.push(
       `🙌 ${returning.name} war ${returning.missedMatches} Spieltage nicht dabei. Schön, dass er wieder am Start ist!`
@@ -79,6 +77,22 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
   });
   const isWindy = weather.windKmh !== null && weather.windKmh >= 20;
 
+  if (weatherPerformance && weatherPerformance.sampleMatches >= 2) {
+    const weatherLabel = weatherPerformance.condition === "cold" ? "Kälte" : "Schönwetter";
+
+    if (weatherPerformance.topScorer) {
+      lines.push(
+        `📈 ${weatherLabel}-Trend (Tore): ${weatherPerformance.topScorer.name} liefert ${weatherPerformance.topScorer.value} Tore in ${weatherPerformance.topScorer.games} Spielen (${weatherPerformance.topScorer.perGame.toFixed(2)} pro Spiel).`
+      );
+    }
+
+    if (weatherPerformance.topAssist) {
+      lines.push(
+        `🅰️ ${weatherLabel}-Trend (Assists): ${weatherPerformance.topAssist.name} kommt auf ${weatherPerformance.topAssist.value} Vorlagen in ${weatherPerformance.topAssist.games} Spielen (${weatherPerformance.topAssist.perGame.toFixed(2)} pro Spiel).`
+      );
+    }
+  }
+
   if (isCold) {
     lines.push("🥶 Es wird kalt – Handschuhe raus, Technik rein.");
   }
@@ -89,11 +103,6 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
 
   if (isWindy) {
     lines.push("💨 Windiger Abend: Distanzschüsse werden zur Lotterie mit Unterhaltungswert.");
-  }
-
-  const hasMichael = hasPlayerLike(selectedPlayers, "michael");
-  if (isCold && hasMichael) {
-    lines.push("🏆 Kalt + Michael dabei? Die Redaktion riecht schon wieder einen MVP-Montag.");
   }
 
   if (lines.length < 3) {
