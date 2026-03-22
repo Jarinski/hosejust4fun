@@ -76,8 +76,8 @@ export default async function MatchDetailPage({
 
   if (!Number.isInteger(matchId)) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-300 bg-white p-6">
           Ungültige Match-ID.
         </section>
       </main>
@@ -154,8 +154,8 @@ export default async function MatchDetailPage({
 
   if (!match) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-zinc-300 bg-white p-6">
           Spiel nicht gefunden.
         </section>
       </main>
@@ -417,14 +417,14 @@ export default async function MatchDetailPage({
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <div className="mx-auto w-full max-w-6xl space-y-6">
-        <p className="text-sm text-zinc-300">
-          <Link href="/admin/matches" className="hover:text-white">← Zurück zur Match-Übersicht</Link>
+        <p className="text-sm text-zinc-600">
+          <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zur Match-Übersicht</Link>
         </p>
 
-        <section className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-6 shadow-2xl shadow-black/30 sm:p-8">
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Matchcenter</p>
+        <section className="rounded-3xl border border-zinc-300 bg-white p-6 shadow-sm sm:p-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Matchcenter</p>
 
           <div className="mt-5 grid items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
             <div>
@@ -445,53 +445,53 @@ export default async function MatchDetailPage({
             </div>
           </div>
 
-          <div className="mt-6 border-t border-zinc-800 pt-5">
-            <p className="text-sm text-zinc-300">
+          <div className="mt-6 border-t border-zinc-300 pt-5">
+            <p className="text-sm text-zinc-600">
               {match.matchDate.toLocaleDateString("de-DE")} · {match.seasonName ?? "Keine Saison"}
             </p>
-            <p className="mt-2 text-base font-medium text-zinc-100">🏆 MVP: {mvpName}</p>
+            <p className="mt-2 text-base font-medium text-zinc-900">🏆 MVP: {mvpName}</p>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-5">
           <h2 className="mb-4 text-lg font-semibold">Wetter</h2>
 
           {!weatherTableAvailable ? (
-            <p className="text-sm text-amber-300">Wetterdaten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
+            <p className="text-sm text-amber-700">Wetterdaten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Bedingung</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Bedingung</p>
                 <p className={`mt-1 text-base font-semibold ${weatherPresentation.className}`}>
                   {weatherPresentation.icon} {weatherPresentation.label}
                 </p>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Temperatur</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Temperatur</p>
                 <p className="mt-1 text-base font-semibold">
                   {match.weatherTemperatureC !== null ? `${match.weatherTemperatureC.toFixed(1)}°C` : "—"}
                 </p>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Gefühlt</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Gefühlt</p>
                 <p className="mt-1 text-base font-semibold">
                   {match.weatherFeelsLikeC !== null ? `${match.weatherFeelsLikeC.toFixed(1)}°C` : "—"}
                 </p>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Niederschlag</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Niederschlag</p>
                 <p className="mt-1 text-base font-semibold">
                   {match.weatherPrecipMm !== null ? `${match.weatherPrecipMm.toFixed(1)} mm` : "—"}
                 </p>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Wind</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Wind</p>
                 <p className="mt-1 text-base font-semibold">
                   {match.weatherWindKmh !== null ? `${match.weatherWindKmh.toFixed(1)} km/h` : "—"}
                 </p>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="text-zinc-400">Luftfeuchtigkeit</p>
+              <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <p className="text-zinc-500">Luftfeuchtigkeit</p>
                 <p className="mt-1 text-base font-semibold">
                   {match.weatherHumidityPct !== null ? `${match.weatherHumidityPct}%` : "—"}
                 </p>
@@ -500,14 +500,14 @@ export default async function MatchDetailPage({
           )}
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-5">
           <h2 className="mb-3 text-lg font-semibold">Spiel-Insights</h2>
           {insights.length === 0 ? (
-            <p className="text-sm text-zinc-400">Noch keine Insights verfügbar.</p>
+            <p className="text-sm text-zinc-500">Noch keine Insights verfügbar.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {insights.map((insight, index) => (
-                <li key={`${insight}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5">
+                <li key={`${insight}-${index}`} className="rounded-xl border border-zinc-300 bg-stone-50 px-3 py-2.5">
                   {insight}
                 </li>
               ))}
@@ -515,13 +515,13 @@ export default async function MatchDetailPage({
           )}
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-5">
           <h2 className="mb-5 text-lg font-semibold">Spielverlauf</h2>
 
           {timelineState.goals.length === 0 ? (
-            <p className="text-sm text-zinc-400">Keine Tore erfasst.</p>
+            <p className="text-sm text-zinc-500">Keine Tore erfasst.</p>
           ) : (
-            <ul className="relative space-y-4 pl-5 before:absolute before:bottom-1 before:left-[10px] before:top-1 before:w-px before:bg-zinc-700">
+            <ul className="relative space-y-4 pl-5 before:absolute before:bottom-1 before:left-[10px] before:top-1 before:w-px before:bg-zinc-300">
               {timelineState.goals.map((goal) => {
                 const teamName = goal.teamSide === "team_1" ? match.team1Name : match.team2Name;
                 const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
@@ -538,26 +538,26 @@ export default async function MatchDetailPage({
                     <article
                       className={`rounded-xl border px-4 py-3 ${
                         isTeam1
-                          ? "border-sky-800 bg-sky-950/20"
-                          : "border-red-800 bg-red-950/20"
+                          ? "border-sky-200 bg-sky-50"
+                          : "border-rose-200 bg-rose-50"
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-zinc-100">
+                        <p className="text-sm font-semibold text-zinc-900">
                           {goal.minute !== null ? `${goal.minute}'` : "—"} · {teamName}
                         </p>
-                        <p className="text-xs text-zinc-400">Zwischenstand {goal.scoreAfterGoal}</p>
+                        <p className="text-xs text-zinc-500">Zwischenstand {goal.scoreAfterGoal}</p>
                       </div>
 
-                      <p className="mt-2 text-sm text-zinc-200">
+                      <p className="mt-2 text-sm text-zinc-800">
                         {goal.isOwnGoal ? (
                           <>
-                            ⚽ <span className="font-medium text-red-300">Eigentor</span> ({scorerName})
+                            ⚽ <span className="font-medium text-red-700">Eigentor</span> ({scorerName})
                           </>
                         ) : (
                           <>
-                            ⚽ <span className="font-medium text-zinc-100">{scorerName}</span>
-                            {assistName ? <span className="text-zinc-300"> (Assist: {assistName})</span> : null}
+                            ⚽ <span className="font-medium text-zinc-900">{scorerName}</span>
+                            {assistName ? <span className="text-zinc-600"> (Assist: {assistName})</span> : null}
                           </>
                         )}
                         {goal.goalType ? <span className="text-zinc-500"> · {goal.goalType}</span> : null}
@@ -573,10 +573,10 @@ export default async function MatchDetailPage({
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {[{ name: match.team1Name, rows: team1Participants }, { name: match.team2Name, rows: team2Participants }].map(
             (team) => (
-              <article key={team.name} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+              <article key={team.name} className="rounded-2xl border border-zinc-300 bg-white p-5">
                 <h2 className="mb-4 text-lg font-semibold">{team.name}</h2>
                 {team.rows.length === 0 ? (
-                  <p className="text-sm text-zinc-400">Keine Teilnehmer erfasst.</p>
+                  <p className="text-sm text-zinc-500">Keine Teilnehmer erfasst.</p>
                 ) : (
                   <ul className="space-y-2 text-sm">
                     {team.rows.map((participant) => {
@@ -587,10 +587,10 @@ export default async function MatchDetailPage({
                       return (
                         <li
                           key={participant.id}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+                          className="flex items-center justify-between gap-3 rounded-lg border border-zinc-300 bg-stone-50 px-3 py-2"
                         >
                           <span>{participant.playerName}</span>
-                          <span className="text-zinc-300">
+                          <span className="text-zinc-600">
                             {goals > 0 ? `⚽${goals}` : ""}
                             {assists > 0 ? ` ${assists === 1 ? "🅰️" : `🅰️${assists}`}` : ""}
                             {isMvp ? " 🏆" : ""}
@@ -605,53 +605,53 @@ export default async function MatchDetailPage({
           )}
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-5">
           <h2 className="mb-4 text-lg font-semibold">Match-Zusammenfassung</h2>
 
           {!ownGoalColumnAvailable ? (
-            <p className="mb-3 text-sm text-amber-300">
+            <p className="mb-3 text-sm text-amber-700">
               Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).
             </p>
           ) : null}
 
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="text-zinc-400">Tore gesamt</p>
+            <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+              <p className="text-zinc-500">Tore gesamt</p>
               <p className="mt-1 text-xl font-semibold">{totalGoals}</p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="text-zinc-400">Assists</p>
+            <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+              <p className="text-zinc-500">Assists</p>
               <p className="mt-1 text-xl font-semibold">{assistsCount}</p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="text-zinc-400">Eigentore</p>
+            <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+              <p className="text-zinc-500">Eigentore</p>
               <p className="mt-1 text-xl font-semibold">{ownGoalsCount}</p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="text-zinc-400">{match.team1Name}</p>
+            <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+              <p className="text-zinc-500">{match.team1Name}</p>
               <p className="mt-1 text-xl font-semibold">{team1Goals}</p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="text-zinc-400">{match.team2Name}</p>
+            <div className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+              <p className="text-zinc-500">{match.team2Name}</p>
               <p className="mt-1 text-xl font-semibold">{team2Goals}</p>
             </div>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+        <section className="rounded-2xl border border-zinc-300 bg-white p-5">
           <h2 className="mb-3 text-lg font-semibold">Aktionen</h2>
           <div className="flex flex-wrap gap-3 text-sm">
             {isAdmin ? (
               <>
                 <Link
                   href={`/admin/matches/${match.id}/goals`}
-                  className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+                  className="rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 hover:border-zinc-500"
                 >
                   Tore bearbeiten
                 </Link>
                 <Link
                   href={`/admin/matches/${match.id}/participants`}
-                  className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+                  className="rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 hover:border-zinc-500"
                 >
                   Teilnehmer bearbeiten
                 </Link>
@@ -659,29 +659,29 @@ export default async function MatchDetailPage({
             ) : null}
             <Link
               href="/admin/matches"
-              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 hover:border-zinc-500"
+              className="rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 hover:border-zinc-500"
             >
               Zurück zur Übersicht
             </Link>
           </div>
 
           {isAdmin ? (
-            <div className="mt-5 border-t border-zinc-800 pt-5">
-              <p className="mb-2 text-sm text-zinc-300">MVP verwalten</p>
+            <div className="mt-5 border-t border-zinc-300 pt-5">
+              <p className="mb-2 text-sm text-zinc-600">MVP verwalten</p>
 
               {!mvpColumnAvailable ? (
-                <p className="text-sm text-amber-300">MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
+                <p className="text-sm text-amber-700">MVP ist in dieser Datenbank noch nicht verfügbar (Migration fehlt).</p>
               ) : (
                 <>
-                  {queryParams.success === "1" ? <p className="mb-2 text-sm text-green-400">MVP wurde gespeichert.</p> : null}
-                  {queryParams.error === "1" ? <p className="mb-2 text-sm text-red-400">MVP konnte nicht gespeichert werden.</p> : null}
+                  {queryParams.success === "1" ? <p className="mb-2 text-sm text-green-700">MVP wurde gespeichert.</p> : null}
+                  {queryParams.error === "1" ? <p className="mb-2 text-sm text-red-700">MVP konnte nicht gespeichert werden.</p> : null}
 
                   <form action={saveMVP} className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-center">
                     <input type="hidden" name="matchId" value={match.id} />
                     <select
                       name="mvpPlayerId"
                       defaultValue={match.mvpPlayerId !== null ? String(match.mvpPlayerId) : ""}
-                      className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900"
                     >
                       <option value="">Kein MVP</option>
                       {participantRows.map((participant) => (
@@ -692,7 +692,7 @@ export default async function MatchDetailPage({
                     </select>
                     <button
                       type="submit"
-                      className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+                      className="w-fit rounded-lg border border-zinc-300 bg-stone-50 px-3 py-2 text-sm hover:border-zinc-500"
                     >
                       Speichern
                     </button>
@@ -703,27 +703,27 @@ export default async function MatchDetailPage({
           ) : null}
 
           {isAdmin ? (
-            <div className="mt-5 border-t border-zinc-800 pt-5">
-              <p className="mb-2 text-sm text-zinc-300">Spiel löschen</p>
+            <div className="mt-5 border-t border-zinc-300 pt-5">
+              <p className="mb-2 text-sm text-zinc-600">Spiel löschen</p>
               {queryParams.deleteError === "1" ? (
-                <p className="mb-2 text-sm text-red-400">Spiel konnte nicht gelöscht werden.</p>
+                <p className="mb-2 text-sm text-red-700">Spiel konnte nicht gelöscht werden.</p>
               ) : null}
 
               <form action={deleteMatch} className="flex flex-wrap items-center gap-3">
                 <input type="hidden" name="matchId" value={match.id} />
-                <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+                <label className="inline-flex items-center gap-2 text-sm text-zinc-600">
                   <input
                     type="checkbox"
                     name="confirmDelete"
                     value="yes"
                     required
-                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-950"
+                    className="h-4 w-4 rounded border-zinc-300 bg-white"
                   />
                   Löschung bestätigen
                 </label>
                 <button
                   type="submit"
-                  className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200 hover:border-red-600"
+                  className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 hover:border-red-500"
                 >
                   Spiel löschen
                 </button>

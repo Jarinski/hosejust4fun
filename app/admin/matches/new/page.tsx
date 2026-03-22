@@ -80,8 +80,8 @@ export default async function NewMatchPage({
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-2xl rounded-2xl border border-zinc-300 bg-white p-6">
         <h1 className="mb-4 text-2xl font-semibold">Neues Spiel anlegen</h1>
 
         {isSuccess ? (
@@ -98,8 +98,8 @@ export default async function NewMatchPage({
 
         <form action={createMatch} className="flex flex-col gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-zinc-300">Saison</span>
-            <select name="seasonId" required className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+            <span className="text-sm text-zinc-600">Saison</span>
+            <select name="seasonId" required className="rounded-lg border border-zinc-300 bg-white px-3 py-2">
             <option value="">Bitte wählen</option>
             {allSeasons.map((season) => (
               <option key={season.id} value={season.id}>
@@ -110,42 +110,42 @@ export default async function NewMatchPage({
         </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-zinc-300">Datum des Spiels</span>
+            <span className="text-sm text-zinc-600">Datum des Spiels</span>
             <input
               type="date"
               name="matchDate"
               required
-              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
             />
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-zinc-300">Team 1 Name</span>
+            <span className="text-sm text-zinc-600">Team 1 Name</span>
             <input
               type="text"
               name="team1Name"
               required
-              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
             />
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-zinc-300">Team 2 Name</span>
+            <span className="text-sm text-zinc-600">Team 2 Name</span>
             <input
               type="text"
               name="team2Name"
               required
-              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
             />
           </label>
 
-          <p className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-300">
+          <p className="rounded-xl border border-zinc-300 bg-stone-50 px-3 py-2 text-sm text-zinc-600">
             Wetterdaten werden beim Speichern automatisch für Holm-Seppensen aus Open-Meteo geladen.
           </p>
 
           <button
             type="submit"
-            className="w-fit rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+            className="w-fit rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 text-sm hover:border-zinc-500"
           >
             Speichern
           </button>

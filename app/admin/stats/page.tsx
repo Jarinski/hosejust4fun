@@ -40,19 +40,19 @@ const statsPages = [
 
 export default function StatsOverviewPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-        <p className="mb-4 text-sm text-zinc-300">
-          <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
+        <p className="mb-4 text-sm text-zinc-600">
+          <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
         </p>
 
         <h1 className="mb-4 text-2xl font-semibold">Statistiken</h1>
 
         <ul className="space-y-3">
           {statsPages.map((page) => (
-            <li key={page.href} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <li key={page.href} className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
               <h2 className="font-medium">{page.title}</h2>
-              <p className="text-sm text-zinc-400">{page.description}</p>
+              <p className="text-sm text-zinc-500">{page.description}</p>
               <p className="mt-2">
                 <Link href={page.href} className="text-sm text-red-300 hover:text-red-200">
                   Zur Statistik →

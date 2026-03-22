@@ -161,14 +161,14 @@ export default async function MatchesPage() {
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">Spiele</h1>
           {isAdmin ? (
             <Link
               href="/admin/matches/new"
-              className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+              className="rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 text-sm hover:border-zinc-500"
             >
               Neues Spiel
             </Link>
@@ -176,11 +176,11 @@ export default async function MatchesPage() {
         </div>
 
         {allMatches.length === 0 ? (
-          <p className="text-zinc-400">Noch keine Spiele vorhanden.</p>
+          <p className="text-zinc-500">Noch keine Spiele vorhanden.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <div className="overflow-x-auto rounded-xl border border-zinc-300">
             <table className="min-w-full text-sm">
-              <thead className="bg-zinc-950/70 text-zinc-300">
+              <thead className="bg-stone-50 text-zinc-600">
                 <tr>
                   <th className="px-4 py-3 text-left">Datum</th>
                   <th className="px-4 py-3 text-left">Saison</th>
@@ -191,29 +191,29 @@ export default async function MatchesPage() {
               </thead>
               <tbody>
                 {allMatches.map((match) => (
-                  <tr key={match.id} className="border-t border-zinc-800">
+                  <tr key={match.id} className="border-t border-zinc-300">
                     {(() => {
                       const weather = weatherByMatchId.get(match.id);
 
                       return (
                         <>
                     <td className="px-4 py-3">{match.matchDate.toLocaleDateString("de-DE")}</td>
-                    <td className="px-4 py-3 text-zinc-300">{match.seasonName ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-600">{match.seasonName ?? "—"}</td>
                     <td className="px-4 py-3">
                       <p>
                         {match.team1Name} vs {match.team2Name}
                       </p>
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-zinc-500">
                         Ergebnis: {match.team1Score}:{match.team2Score}
                       </p>
-                      <p className="text-xs text-zinc-400">MVP: {match.mvpName ?? "—"}</p>
+                      <p className="text-xs text-zinc-500">MVP: {match.mvpName ?? "—"}</p>
                       {(storiesByMatchId.get(match.id) ?? []).map((line, index) => (
                         <p key={`${match.id}-story-${index}`} className="text-xs text-zinc-500">
                           {line}
                         </p>
                       ))}
                     </td>
-                    <td className="px-4 py-3 text-zinc-300">
+                    <td className="px-4 py-3 text-zinc-600">
                       {weather ? (
                         <>
                           {(() => {
@@ -224,12 +224,12 @@ export default async function MatchesPage() {
                             });
 
                             return (
-                              <p className="font-medium text-zinc-100">
+                              <p className="font-medium text-zinc-900">
                                 {presentation.icon} {presentation.label}
                               </p>
                             );
                           })()}
-                          <p className="text-xs text-zinc-400">
+                          <p className="text-xs text-zinc-500">
                             {weather.temperatureC !== null && weather.temperatureC !== undefined
                               ? `${weather.temperatureC.toFixed(1)}°C`
                               : "—"}
@@ -247,7 +247,7 @@ export default async function MatchesPage() {
                       <div className="flex flex-wrap gap-2">
                         <Link
                           href={`/admin/matches/${match.id}`}
-                          className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:border-zinc-500"
                         >
                           Details
                         </Link>
@@ -255,13 +255,13 @@ export default async function MatchesPage() {
                           <>
                             <Link
                               href={`/admin/matches/${match.id}/participants`}
-                              className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
+                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:border-zinc-500"
                             >
                               Teilnehmer
                             </Link>
                             <Link
                               href={`/admin/matches/${match.id}/goals`}
-                              className="rounded-md border border-zinc-700 px-2 py-1 text-xs hover:border-zinc-500"
+                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs hover:border-zinc-500"
                             >
                               Tore
                             </Link>

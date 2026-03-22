@@ -57,12 +57,12 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
   const filterUi = (
     <>
       <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
-        <label htmlFor="seasonId" className="text-sm text-zinc-300">Saison:</label>
+        <label htmlFor="seasonId" className="text-sm text-zinc-600">Saison:</label>
         <select
           id="seasonId"
           name="seasonId"
           defaultValue={validSeasonId?.toString() ?? ""}
-          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"
         >
           <option value="">Alle Saisons</option>
           {allSeasons.map((season) => (
@@ -73,13 +73,13 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
         </select>
         <button
           type="submit"
-          className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2 text-sm hover:border-zinc-500"
+          className="rounded-lg border border-zinc-300 bg-stone-50 px-3 py-2 text-sm hover:border-zinc-500"
         >
           Filtern
         </button>
       </form>
 
-      <p className="mb-4 text-sm text-zinc-400">
+      <p className="mb-4 text-sm text-zinc-500">
         Aktive Ansicht: {selectedSeason ? selectedSeason.name : "Alle Saisons"}
       </p>
 
@@ -91,15 +91,15 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
 
   if (participants.length === 0) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-          <p className="mb-4 text-sm text-zinc-300">
-            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
+          <p className="mb-4 text-sm text-zinc-600">
+            <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
           </p>
 
           <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
           {filterUi}
-          <p className="text-zinc-400">Noch keine Teilnehmerdaten erfasst.</p>
+          <p className="text-zinc-500">Noch keine Teilnehmerdaten erfasst.</p>
         </section>
       </main>
     );
@@ -168,15 +168,15 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
 
   if (duoPerformance.length === 0) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-          <p className="mb-4 text-sm text-zinc-300">
-            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
+          <p className="mb-4 text-sm text-zinc-600">
+            <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
           </p>
 
           <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
           {filterUi}
-          <p className="text-zinc-400">Noch keine Duos vorhanden.</p>
+          <p className="text-zinc-500">Noch keine Duos vorhanden.</p>
         </section>
       </main>
     );
@@ -231,18 +231,18 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-        <p className="mb-4 text-sm text-zinc-300">
-          <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
+        <p className="mb-4 text-sm text-zinc-600">
+          <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
         </p>
 
         <h1 className="mb-4 text-2xl font-semibold">Duo-Performance</h1>
         {filterUi}
 
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-zinc-300">
           <table className="min-w-full text-sm">
-            <thead className="bg-zinc-950/70 text-zinc-300">
+            <thead className="bg-stone-50 text-zinc-600">
               <tr>
                 <th className="px-4 py-3 text-left">Spieler 1</th>
                 <th className="px-4 py-3 text-left">Spieler 2</th>
@@ -253,7 +253,7 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
             </thead>
             <tbody>
               {rows.map((entry) => (
-                <tr key={`${entry.player1Id}-${entry.player2Id}`} className="border-t border-zinc-800">
+                <tr key={`${entry.player1Id}-${entry.player2Id}`} className="border-t border-zinc-300">
                   <td className="px-4 py-3">{entry.player1Name}</td>
                   <td className="px-4 py-3">{entry.player2Name}</td>
                   <td className="px-4 py-3">{entry.gamesTogether}</td>

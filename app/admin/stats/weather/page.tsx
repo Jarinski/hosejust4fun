@@ -127,9 +127,9 @@ function RankingCard({
   rows: RankingRow[];
 }) {
   return (
-    <article className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-      <h2 className="text-xl font-semibold text-zinc-100">{title}</h2>
-      <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
+    <article className="rounded-2xl border border-zinc-300 bg-stone-50 p-5">
+      <h2 className="text-xl font-semibold text-zinc-900">{title}</h2>
+      <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
 
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-zinc-500">Keine passenden Daten vorhanden.</p>
@@ -138,20 +138,20 @@ function RankingCard({
           {rows.map((row, index) => (
             <li
               key={row.playerId}
-              className="grid grid-cols-[auto,1fr,auto] items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/70 px-3 py-3"
+              className="grid grid-cols-[auto,1fr,auto] items-center gap-3 rounded-xl border border-zinc-300/80 bg-stone-50 px-3 py-3"
             >
-              <span className="text-sm font-semibold text-zinc-300">#{index + 1}</span>
+              <span className="text-sm font-semibold text-zinc-600">#{index + 1}</span>
 
               <div>
-                <p className="font-medium text-zinc-100">{row.playerName}</p>
-                <p className="text-xs text-zinc-400">{row.games} Spiele unter diesen Bedingungen</p>
+                <p className="font-medium text-zinc-900">{row.playerName}</p>
+                <p className="text-xs text-zinc-500">{row.games} Spiele unter diesen Bedingungen</p>
               </div>
 
               <div className="text-right">
                 <p className="font-semibold text-red-300">
                   {row.value} {valueLabel}
                 </p>
-                <p className="text-xs text-zinc-400">{row.perGame} / Spiel</p>
+                <p className="text-xs text-zinc-500">{row.perGame} / Spiel</p>
               </div>
             </li>
           ))}
@@ -368,14 +368,14 @@ export default async function WeatherStatsPage() {
   );
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-        <p className="mb-4 text-sm text-zinc-300">
-          <Link href="/admin/stats" className="hover:text-white">← Zurück zu Statistiken</Link>
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
+        <p className="mb-4 text-sm text-zinc-600">
+          <Link href="/admin/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
         </p>
 
         <h1 className="text-2xl font-semibold">Wetter-Statistik</h1>
-        <p className="mt-2 text-sm text-zinc-400">
+        <p className="mt-2 text-sm text-zinc-500">
           Auswertung basiert ausschließlich auf gespeicherten Datensätzen in <code>match_weather</code>.
           Berücksichtigt werden nur Spiele mit vorhandenen Wetterdaten.
         </p>

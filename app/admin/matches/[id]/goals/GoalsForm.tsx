@@ -71,10 +71,10 @@ export function GoalsForm({
         return (
           <div
             key={index}
-            className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 md:grid-cols-6"
+            className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-300 bg-stone-50 p-3 md:grid-cols-6"
           >
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Team</span>
+              <span className="text-xs text-zinc-500">Team</span>
               <select
                 name={`row_${index}_teamSide`}
                 value={row.teamSide}
@@ -88,7 +88,7 @@ export function GoalsForm({
                     isOwnGoal: false,
                   }));
                 }}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm"
               >
                 <option value="">-</option>
                 <option value="team_1">Team 1</option>
@@ -97,8 +97,8 @@ export function GoalsForm({
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Eigentor</span>
-              <div className="flex h-full items-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+              <span className="text-xs text-zinc-500">Eigentor</span>
+              <div className="flex h-full items-center rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   name={`row_${index}_isOwnGoal`}
@@ -114,12 +114,12 @@ export function GoalsForm({
                   }}
                   disabled={!row.teamSide}
                 />
-                <span className="ml-2 text-zinc-300">Ja</span>
+                <span className="ml-2 text-zinc-600">Ja</span>
               </div>
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-zinc-500">
                 {row.isOwnGoal ? "Verursacher (Eigentor)" : "Torschütze"}
               </span>
               <select
@@ -135,7 +135,7 @@ export function GoalsForm({
                   }));
                 }}
                 disabled={!row.teamSide}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm disabled:opacity-60"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm disabled:opacity-60"
               >
                 <option value="">-</option>
                 {selectablePlayers.map((player) => (
@@ -147,7 +147,7 @@ export function GoalsForm({
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Vorlage</span>
+              <span className="text-xs text-zinc-500">Vorlage</span>
               <select
                 name={`row_${index}_assistPlayerId`}
                 value={row.assistPlayerId}
@@ -158,7 +158,7 @@ export function GoalsForm({
                   }));
                 }}
                 disabled={!row.teamSide || row.isOwnGoal}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm disabled:opacity-60"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm disabled:opacity-60"
               >
                 <option value="">-</option>
                 {selectablePlayers
@@ -172,7 +172,7 @@ export function GoalsForm({
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Minute</span>
+              <span className="text-xs text-zinc-500">Minute</span>
               <input
                 type="number"
                 name={`row_${index}_minute`}
@@ -184,12 +184,12 @@ export function GoalsForm({
                     minute: event.target.value,
                   }));
                 }}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm"
               />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Tor-Typ</span>
+              <span className="text-xs text-zinc-500">Tor-Typ</span>
               <select
                 name={`row_${index}_goalType`}
                 value={row.goalType}
@@ -199,7 +199,7 @@ export function GoalsForm({
                     goalType: event.target.value as GoalRowState["goalType"],
                   }));
                 }}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm"
               >
                 <option value="">-</option>
                 {GOAL_TYPES.map((goalType) => (
@@ -215,7 +215,7 @@ export function GoalsForm({
 
       <button
         type="submit"
-        className="self-start rounded-lg border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-sm hover:border-zinc-500"
+        className="self-start rounded-lg border border-zinc-300 bg-stone-50 px-4 py-2 text-sm hover:border-zinc-500"
       >
         Tore speichern
       </button>

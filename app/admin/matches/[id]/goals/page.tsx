@@ -24,8 +24,8 @@ export default async function MatchGoalsPage({
   const matchId = Number(routeParams.id);
   if (!Number.isInteger(matchId)) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
           Ungültige Match-ID.
         </section>
       </main>
@@ -46,8 +46,8 @@ export default async function MatchGoalsPage({
 
   if (!match) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
           Spiel nicht gefunden.
         </section>
       </main>
@@ -216,38 +216,38 @@ export default async function MatchGoalsPage({
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
         <h1 className="mb-2 text-xl font-semibold">Tore erfassen</h1>
-        <p className="mb-4 text-zinc-300">
+        <p className="mb-4 text-zinc-600">
           Spiel #{match.id}: {match.team1Name} vs. {match.team2Name}
         </p>
 
         {queryParams.success === "1" ? (
-          <p className="mb-4 rounded-lg border border-emerald-700/40 bg-emerald-950/40 px-3 py-2 text-emerald-300">
+          <p className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-700">
             Tore wurden gespeichert.
           </p>
         ) : null}
 
         {queryParams.error ? (
-          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+          <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-700">
             Tore konnten nicht gespeichert werden.
           </p>
         ) : null}
 
         <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
             <h2 className="mb-2 font-medium">Team 1 ({match.team1Name})</h2>
-            <ul className="list-disc pl-5 text-zinc-200">
+            <ul className="list-disc pl-5 text-zinc-800">
             {team1Players.length === 0 ? <li>Keine Teilnehmer</li> : null}
             {team1Players.map((player) => (
               <li key={player.id}>{player.name}</li>
             ))}
           </ul>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
             <h2 className="mb-2 font-medium">Team 2 ({match.team2Name})</h2>
-            <ul className="list-disc pl-5 text-zinc-200">
+            <ul className="list-disc pl-5 text-zinc-800">
             {team2Players.length === 0 ? <li>Keine Teilnehmer</li> : null}
             {team2Players.map((player) => (
               <li key={player.id}>{player.name}</li>

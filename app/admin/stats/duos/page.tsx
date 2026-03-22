@@ -20,14 +20,14 @@ export default async function DuosPage() {
 
   if (participants.length === 0) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-          <p className="mb-4 text-sm text-zinc-300">
-            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
+          <p className="mb-4 text-sm text-zinc-600">
+            <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
           </p>
 
           <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
-          <p className="text-zinc-400">Noch keine Teilnehmerdaten erfasst.</p>
+          <p className="text-zinc-500">Noch keine Teilnehmerdaten erfasst.</p>
         </section>
       </main>
     );
@@ -72,14 +72,14 @@ export default async function DuosPage() {
 
   if (duoCounts.length === 0) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-          <p className="mb-4 text-sm text-zinc-300">
-            <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+      <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+        <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
+          <p className="mb-4 text-sm text-zinc-600">
+            <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
           </p>
 
           <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
-          <p className="text-zinc-400">Noch keine Duos vorhanden.</p>
+          <p className="text-zinc-500">Noch keine Duos vorhanden.</p>
         </section>
       </main>
     );
@@ -119,17 +119,17 @@ export default async function DuosPage() {
     });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 p-6 text-zinc-100">
-      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-        <p className="mb-4 text-sm text-zinc-300">
-          <Link href="/admin/matches" className="hover:text-white">← Zurück zu Matches</Link>
+    <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
+      <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
+        <p className="mb-4 text-sm text-zinc-600">
+          <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
         </p>
 
         <h1 className="mb-4 text-2xl font-semibold">Top-Duos</h1>
 
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-zinc-300">
           <table className="min-w-full text-sm">
-            <thead className="bg-zinc-950/70 text-zinc-300">
+            <thead className="bg-stone-50 text-zinc-600">
               <tr>
                 <th className="px-4 py-3 text-left">Spieler 1</th>
                 <th className="px-4 py-3 text-left">Spieler 2</th>
@@ -138,7 +138,7 @@ export default async function DuosPage() {
             </thead>
             <tbody>
               {duosWithNames.map((duo) => (
-                <tr key={`${duo.player1Id}-${duo.player2Id}`} className="border-t border-zinc-800">
+                <tr key={`${duo.player1Id}-${duo.player2Id}`} className="border-t border-zinc-300">
                   <td className="px-4 py-3">{duo.player1Name}</td>
                   <td className="px-4 py-3">{duo.player2Name}</td>
                   <td className="px-4 py-3 font-semibold text-red-300">{duo.gamesTogether}</td>
