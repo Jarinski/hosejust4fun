@@ -405,6 +405,7 @@ export default async function Home() {
     weather: nextMatchWeather,
     strongestDuo,
     returningPlayers,
+    weatherPerformance: null,
   });
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
