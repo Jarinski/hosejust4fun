@@ -13,12 +13,22 @@ function isMissingColumnError(error: unknown, columnName: string) {
   }
 
   const maybePgError = error as { code?: string; message?: string };
+  const normalizedColumnName = columnName.toLowerCase();
+  const message =
+    typeof maybePgError.message === "string" ? maybePgError.message.toLowerCase() : "";
 
-  if (typeof maybePgError.message === "string" && maybePgError.message.includes(columnName)) {
-    return true;
+  if (maybePgError.code !== "42703") {
+    return false;
   }
 
-  return maybePgError.code === "42703";
+  if (!message) {
+    return false;
+  }
+
+  const referencesColumn =
+    message.includes(`"${normalizedColumnName}"`) || message.includes(normalizedColumnName);
+
+  return referencesColumn && message.includes("does not exist");
 }
 
 export default async function TopscorerPage({ searchParams }: TopscorerPageProps) {
