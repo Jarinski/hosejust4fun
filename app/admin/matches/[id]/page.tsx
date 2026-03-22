@@ -322,6 +322,7 @@ export default async function MatchDetailPage({
     scorerPlayerId: number;
     assistPlayerId: number | null;
     minute: number | null;
+    goalType: string | null;
     createdAt: Date | null;
   }> = [];
 
@@ -335,6 +336,7 @@ export default async function MatchDetailPage({
         scorerPlayerId: goalEvents.scorerPlayerId,
         assistPlayerId: goalEvents.assistPlayerId,
         minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
         createdAt: goalEvents.createdAt,
       })
       .from(goalEvents)
@@ -353,6 +355,7 @@ export default async function MatchDetailPage({
         scorerPlayerId: goalEvents.scorerPlayerId,
         assistPlayerId: goalEvents.assistPlayerId,
         minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
         createdAt: goalEvents.createdAt,
       })
       .from(goalEvents)
