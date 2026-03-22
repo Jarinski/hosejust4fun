@@ -7,15 +7,34 @@ import { getAdminSession } from "@/src/lib/auth";
 export default async function PlayersPage() {
   const isAdmin = Boolean(await getAdminSession());
 
-  const allPlayers = await db
-    .select({
-      id: players.id,
-      name: players.name,
-      isGoalkeeper: players.isGoalkeeper,
-      createdAt: players.createdAt,
-    })
-    .from(players)
-    .orderBy(asc(players.name));
+  const allPlayers = await (async () => {
+    try {
+      return await db
+        .select({
+          id: players.id,
+          name: players.name,
+          isGoalkeeper: players.isGoalkeeper,
+          createdAt: players.createdAt,
+        })
+        .from(players)
+        .orderBy(asc(players.name));
+    } catch {
+      // Fallback für Deployments, in denen is_goalkeeper noch nicht existiert.
+      const legacyPlayers = await db
+        .select({
+          id: players.id,
+          name: players.name,
+          createdAt: players.createdAt,
+        })
+        .from(players)
+        .orderBy(asc(players.name));
+
+      return legacyPlayers.map((player) => ({
+        ...player,
+        isGoalkeeper: false,
+      }));
+    }
+  })();
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
