@@ -10,6 +10,7 @@ type TopNavProps = {
 const publicNavItems = [
   { href: "/", label: "Dashboard" },
   { href: "/spieltag", label: "Spieltag" },
+  { href: "/stats", label: "Statistiken" },
 ] as const;
 
 const adminNavItems = [
@@ -20,7 +21,7 @@ const adminNavItems = [
 
 export function TopNav({ isAdmin }: TopNavProps) {
   const pathname = usePathname();
-  const navItems = [...publicNavItems, ...adminNavItems];
+  const navItems = isAdmin ? [...publicNavItems, ...adminNavItems] : publicNavItems;
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-300/90 bg-stone-100/95 backdrop-blur">
