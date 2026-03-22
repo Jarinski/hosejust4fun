@@ -36,6 +36,11 @@ const statsPages = [
     href: "/admin/stats/weather",
     description: "Spielerleistungen bei Kälte, Regen und Schlechtwetter",
   },
+  {
+    title: "Tor-Momente",
+    href: "/admin/stats/goal-moments",
+    description: "1:0-Schützen, Ausgleichstreffer sowie frühe/späte Tore",
+  },
 ] as const;
 
 export default function StatsOverviewPage() {

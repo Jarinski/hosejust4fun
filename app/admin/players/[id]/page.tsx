@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players } from "@/src/db/schema";
 import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
@@ -8,6 +8,7 @@ import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
 type PlayerDetailPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; updated?: string }>;
 };
 
 type WeatherMatchRow = {
@@ -23,6 +24,30 @@ type GoalRow = {
   scorerPlayerId: number;
   assistPlayerId: number | null;
   isOwnGoal: boolean;
+};
+
+type GoalTimelineRow = {
+  id: number;
+  matchId: number;
+  teamSide: "team_1" | "team_2";
+  scorerPlayerId: number;
+  minute: number | null;
+  isOwnGoal: boolean;
+};
+
+type DuoWithPlayer = {
+  teammateId: number;
+  gamesTogether: number;
+  teamGoals: number;
+  goalsAgainst: number;
+};
+
+type TrioWithPlayer = {
+  teammate1Id: number;
+  teammate2Id: number;
+  gamesTogether: number;
+  teamGoals: number;
+  goalsAgainst: number;
 };
 
 function isRainMatch(match: WeatherMatchRow) {
@@ -77,6 +102,41 @@ async function loadGoalsForMatches(matchIds: number[]): Promise<GoalRow[]> {
   }
 }
 
+async function loadGoalTimelineForMatches(matchIds: number[]): Promise<GoalTimelineRow[]> {
+  if (matchIds.length === 0) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select({
+        id: goalEvents.id,
+        matchId: goalEvents.matchId,
+        teamSide: goalEvents.teamSide,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        minute: goalEvents.minute,
+        isOwnGoal: goalEvents.isOwnGoal,
+      })
+      .from(goalEvents)
+      .where(inArray(goalEvents.matchId, matchIds))
+      .orderBy(asc(goalEvents.matchId), asc(goalEvents.id));
+  } catch {
+    const legacyRows = await db
+      .select({
+        id: goalEvents.id,
+        matchId: goalEvents.matchId,
+        teamSide: goalEvents.teamSide,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        minute: goalEvents.minute,
+      })
+      .from(goalEvents)
+      .where(inArray(goalEvents.matchId, matchIds))
+      .orderBy(asc(goalEvents.matchId), asc(goalEvents.id));
+
+    return legacyRows.map((row) => ({ ...row, isOwnGoal: false }));
+  }
+}
+
 function buildWeatherSummary(values: {
   rainGoals: number;
   coldGoals: number;
@@ -105,10 +165,13 @@ function buildWeatherSummary(values: {
   return null;
 }
 
-export default async function PlayerDetailPage({ params }: PlayerDetailPageProps) {
+export default async function PlayerDetailPage({ params, searchParams }: PlayerDetailPageProps) {
   const routeParams = await params;
+  const pageSearchParams = await searchParams;
   const playerId = Number(routeParams.id);
   const isAdmin = Boolean(await getAdminSession());
+  const pageError = pageSearchParams?.error;
+  const wasUpdated = pageSearchParams?.updated === "1";
 
   if (!Number.isInteger(playerId)) {
     return (
@@ -157,6 +220,7 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
 
   const participationRows = await db
     .select({
+      matchId: matchParticipants.matchId,
       teamSide: matchParticipants.teamSide,
       team1Score: matches.team1Score,
       team2Score: matches.team2Score,
@@ -201,6 +265,24 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
     .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
     .where(eq(matchParticipants.playerId, playerId));
 
+  const playerMatchIds = Array.from(new Set(participationRows.map((row) => row.matchId)));
+
+  const [allParticipantsForPlayerMatches, allGoalsForPlayerMatches, goalTimelineForPlayerMatches] =
+    await Promise.all([
+      playerMatchIds.length > 0
+        ? db
+            .select({
+              matchId: matchParticipants.matchId,
+              playerId: matchParticipants.playerId,
+              teamSide: matchParticipants.teamSide,
+            })
+            .from(matchParticipants)
+            .where(inArray(matchParticipants.matchId, playerMatchIds))
+        : Promise.resolve([] as Array<{ matchId: number; playerId: number; teamSide: "team_1" | "team_2" }>),
+      loadGoalsForMatches(playerMatchIds),
+      loadGoalTimelineForMatches(playerMatchIds),
+    ]);
+
   const weatherMatchIds = weatherMatches.map((match) => match.matchId);
   const weatherGoals = await loadGoalsForMatches(weatherMatchIds);
 
@@ -215,6 +297,7 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   let coldGoals = 0;
   let sunnyGoals = 0;
   let rainAssists = 0;
+  let sunnyAssists = 0;
 
   for (const goal of weatherGoals) {
     if (goal.isOwnGoal) {
@@ -233,6 +316,10 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
     if (isOwnGoalFilteredAssist && rainMatchIdSet.has(goal.matchId)) {
       rainAssists += 1;
     }
+
+    if (isOwnGoalFilteredAssist && sunnyMatchIdSet.has(goal.matchId)) {
+      sunnyAssists += 1;
+    }
   }
 
   const mvpByMatchId = new Map<number, number | null>();
@@ -246,6 +333,13 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   for (const matchId of badWeatherMatchIdSet) {
     if (mvpByMatchId.get(matchId) === playerId) {
       badWeatherMvps += 1;
+    }
+  }
+
+  let sunnyMvps = 0;
+  for (const matchId of sunnyMatchIdSet) {
+    if (mvpByMatchId.get(matchId) === playerId) {
+      sunnyMvps += 1;
     }
   }
 
@@ -268,6 +362,190 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   const goals = goalCountRows[0]?.count ?? 0;
   const assists = assistCountRows[0]?.count ?? 0;
 
+  let wins = 0;
+  let draws = 0;
+  let losses = 0;
+  for (const row of participationRows) {
+    const teamGoals = row.teamSide === "team_1" ? row.team1Score : row.team2Score;
+    const conceded = row.teamSide === "team_1" ? row.team2Score : row.team1Score;
+
+    if (teamGoals > conceded) wins += 1;
+    else if (teamGoals === conceded) draws += 1;
+    else losses += 1;
+  }
+
+  const winRate = games > 0 ? ((wins / games) * 100).toFixed(1) : "0.0";
+
+  const participantsByMatchAndTeam = new Map<string, number[]>();
+  for (const participant of allParticipantsForPlayerMatches) {
+    const key = `${participant.matchId}-${participant.teamSide}`;
+    const current = participantsByMatchAndTeam.get(key) ?? [];
+    current.push(participant.playerId);
+    participantsByMatchAndTeam.set(key, current);
+  }
+
+  const duoWithPlayerStats = new Map<number, DuoWithPlayer>();
+  const trioWithPlayerStats = new Map<string, TrioWithPlayer>();
+
+  for (const row of participationRows) {
+    const key = `${row.matchId}-${row.teamSide}`;
+    const teammates = (participantsByMatchAndTeam.get(key) ?? []).filter((id) => id !== playerId);
+    const teamGoals = row.teamSide === "team_1" ? row.team1Score : row.team2Score;
+    const conceded = row.teamSide === "team_1" ? row.team2Score : row.team1Score;
+
+    for (const teammateId of teammates) {
+      const current = duoWithPlayerStats.get(teammateId) ?? {
+        teammateId,
+        gamesTogether: 0,
+        teamGoals: 0,
+        goalsAgainst: 0,
+      };
+
+      current.gamesTogether += 1;
+      current.teamGoals += teamGoals;
+      current.goalsAgainst += conceded;
+      duoWithPlayerStats.set(teammateId, current);
+    }
+
+    const sortedTeammates = [...new Set(teammates)].sort((a, b) => a - b);
+    for (let i = 0; i < sortedTeammates.length - 1; i++) {
+      for (let j = i + 1; j < sortedTeammates.length; j++) {
+        const teammate1Id = sortedTeammates[i];
+        const teammate2Id = sortedTeammates[j];
+        const trioKey = `${teammate1Id}-${teammate2Id}`;
+
+        const current = trioWithPlayerStats.get(trioKey) ?? {
+          teammate1Id,
+          teammate2Id,
+          gamesTogether: 0,
+          teamGoals: 0,
+          goalsAgainst: 0,
+        };
+
+        current.gamesTogether += 1;
+        current.teamGoals += teamGoals;
+        current.goalsAgainst += conceded;
+        trioWithPlayerStats.set(trioKey, current);
+      }
+    }
+  }
+
+  const goalTimelineSorted = [...goalTimelineForPlayerMatches].sort((a, b) => {
+    if (a.matchId !== b.matchId) return a.matchId - b.matchId;
+    const minuteA = a.minute ?? 999;
+    const minuteB = b.minute ?? 999;
+    if (minuteA !== minuteB) return minuteA - minuteB;
+    return a.id - b.id;
+  });
+
+  let firstGoalGoals = 0;
+  let equalizerGoals = 0;
+  let earlyGoals = 0;
+  let lateGoals = 0;
+  let currentTimelineMatchId: number | null = null;
+  let team1ScoreRunning = 0;
+  let team2ScoreRunning = 0;
+
+  for (const goal of goalTimelineSorted) {
+    if (goal.matchId !== currentTimelineMatchId) {
+      currentTimelineMatchId = goal.matchId;
+      team1ScoreRunning = 0;
+      team2ScoreRunning = 0;
+    }
+
+    const wasNilNil = team1ScoreRunning === 0 && team2ScoreRunning === 0;
+
+    if (goal.teamSide === "team_1") {
+      team1ScoreRunning += 1;
+    } else {
+      team2ScoreRunning += 1;
+    }
+
+    if (goal.isOwnGoal || goal.scorerPlayerId !== playerId) {
+      continue;
+    }
+
+    if (wasNilNil) firstGoalGoals += 1;
+    if (team1ScoreRunning === team2ScoreRunning) equalizerGoals += 1;
+    if (goal.minute !== null && goal.minute >= 0 && goal.minute <= 15) earlyGoals += 1;
+    if (goal.minute !== null && goal.minute >= 76) lateGoals += 1;
+  }
+
+  const assistsToScorer = new Map<number, number>();
+  const assistsFromProvider = new Map<number, number>();
+
+  for (const goal of allGoalsForPlayerMatches) {
+    if (goal.isOwnGoal) continue;
+
+    if (goal.scorerPlayerId === playerId && goal.assistPlayerId !== null) {
+      assistsToScorer.set(
+        goal.assistPlayerId,
+        (assistsToScorer.get(goal.assistPlayerId) ?? 0) + 1,
+      );
+    }
+
+    if (goal.assistPlayerId === playerId) {
+      assistsFromProvider.set(
+        goal.scorerPlayerId,
+        (assistsFromProvider.get(goal.scorerPlayerId) ?? 0) + 1,
+      );
+    }
+  }
+
+  const teammateIds = Array.from(
+    new Set([
+      ...Array.from(duoWithPlayerStats.keys()),
+      ...Array.from(trioWithPlayerStats.values()).flatMap((entry) => [entry.teammate1Id, entry.teammate2Id]),
+      ...Array.from(assistsToScorer.keys()),
+      ...Array.from(assistsFromProvider.keys()),
+    ]),
+  );
+
+  const teammateRows = teammateIds.length
+    ? await db
+        .select({
+          id: players.id,
+          name: players.name,
+        })
+        .from(players)
+        .where(inArray(players.id, teammateIds))
+    : [];
+
+  const teammateNameById = new Map(teammateRows.map((entry) => [entry.id, entry.name]));
+
+  const bestDuoByGames = Array.from(duoWithPlayerStats.values())
+    .sort((a, b) => b.gamesTogether - a.gamesTogether || a.teammateId - b.teammateId)[0] ?? null;
+
+  const bestDuoByTeamGoals = Array.from(duoWithPlayerStats.values())
+    .sort((a, b) => {
+      if (b.teamGoals !== a.teamGoals) return b.teamGoals - a.teamGoals;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.teammateId - b.teammateId;
+    })[0] ?? null;
+
+  const worstDuoByGoalsAgainstPerGame = Array.from(duoWithPlayerStats.values())
+    .sort((a, b) => {
+      const aPerGame = a.gamesTogether > 0 ? a.goalsAgainst / a.gamesTogether : 0;
+      const bPerGame = b.gamesTogether > 0 ? b.goalsAgainst / b.gamesTogether : 0;
+      if (bPerGame !== aPerGame) return bPerGame - aPerGame;
+      if (b.goalsAgainst !== a.goalsAgainst) return b.goalsAgainst - a.goalsAgainst;
+      return a.teammateId - b.teammateId;
+    })[0] ?? null;
+
+  const bestTrioByTeamGoals = Array.from(trioWithPlayerStats.values())
+    .sort((a, b) => {
+      if (b.teamGoals !== a.teamGoals) return b.teamGoals - a.teamGoals;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      if (a.teammate1Id !== b.teammate1Id) return a.teammate1Id - b.teammate1Id;
+      return a.teammate2Id - b.teammate2Id;
+    })[0] ?? null;
+
+  const topAssistProvider = Array.from(assistsToScorer.entries())
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])[0] ?? null;
+
+  const topAssistReceiver = Array.from(assistsFromProvider.entries())
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])[0] ?? null;
+
   const goalkeeperGoalsAgainst = participationRows.reduce((sum, row) => {
     const conceded = row.teamSide === "team_1" ? row.team2Score : row.team1Score;
     return sum + conceded;
@@ -278,7 +556,7 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   }).length;
   const goalsAgainstPerGame = games > 0 ? (goalkeeperGoalsAgainst / games).toFixed(2) : "0.00";
 
-  async function updatePlayerRole(formData: FormData) {
+  async function updatePlayerDetails(formData: FormData) {
     "use server";
 
     await requireAdminInAction();
@@ -288,14 +566,64 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
       redirect("/admin/players");
     }
 
+    const nameRaw = formData.get("name");
+    const name = String(nameRaw ?? "").trim();
+    if (!name) {
+      redirect(`/admin/players/${targetPlayerId}?error=name`);
+    }
+
     const isGoalkeeper = formData.get("isGoalkeeper") === "on";
 
     await db
       .update(players)
-      .set({ isGoalkeeper })
+      .set({ name, isGoalkeeper })
       .where(eq(players.id, targetPlayerId));
 
-    redirect(`/admin/players/${targetPlayerId}`);
+    redirect(`/admin/players/${targetPlayerId}?updated=1`);
+  }
+
+  async function deletePlayer(formData: FormData) {
+    "use server";
+
+    await requireAdminInAction();
+
+    const targetPlayerId = Number(formData.get("playerId"));
+    if (!Number.isInteger(targetPlayerId)) {
+      redirect("/admin/players");
+    }
+
+    const participantLinks = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(matchParticipants)
+      .where(eq(matchParticipants.playerId, targetPlayerId));
+
+    const goalLinks = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(goalEvents)
+      .where(
+        or(
+          eq(goalEvents.scorerPlayerId, targetPlayerId),
+          eq(goalEvents.assistPlayerId, targetPlayerId),
+        ),
+      );
+
+    const mvpLinks = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(matches)
+      .where(eq(matches.mvpPlayerId, targetPlayerId));
+
+    const totalLinks =
+      (participantLinks[0]?.count ?? 0) +
+      (goalLinks[0]?.count ?? 0) +
+      (mvpLinks[0]?.count ?? 0);
+
+    if (totalLinks > 0) {
+      redirect(`/admin/players/${targetPlayerId}?error=in_use`);
+    }
+
+    await db.delete(players).where(eq(players.id, targetPlayerId));
+
+    redirect("/admin/players");
   }
 
   return (
@@ -310,25 +638,67 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
           {player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
         </p>
 
+        {pageError === "name" ? (
+          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+            Bitte einen gültigen Namen eingeben.
+          </p>
+        ) : null}
+
+        {pageError === "in_use" ? (
+          <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
+            Spieler kann nicht gelöscht werden, da bereits Match-/Tor-Daten verknüpft sind.
+          </p>
+        ) : null}
+
+        {wasUpdated ? (
+          <p className="mb-4 rounded-lg border border-emerald-700/40 bg-emerald-950/40 px-3 py-2 text-emerald-300">
+            Spieler aktualisiert.
+          </p>
+        ) : null}
+
         {isAdmin ? (
-          <form action={updatePlayerRole} className="mb-6 flex items-center gap-3 rounded-xl border border-zinc-300 bg-stone-50 p-3">
-            <input type="hidden" name="playerId" value={player.id} />
-            <label className="flex items-center gap-2 text-sm text-zinc-700">
-              <input
-                type="checkbox"
-                name="isGoalkeeper"
-                defaultChecked={player.isGoalkeeper}
-                className="h-4 w-4 accent-zinc-900"
-              />
-              Torhüter
-            </label>
-            <button
-              type="submit"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:border-zinc-500"
-            >
-              Rolle speichern
-            </button>
-          </form>
+          <div className="mb-6 space-y-3">
+            <form action={updatePlayerDetails} className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-300 bg-stone-50 p-3">
+              <input type="hidden" name="playerId" value={player.id} />
+              <label className="flex min-w-56 flex-1 flex-col gap-1 text-sm text-zinc-700">
+                <span className="text-xs text-zinc-500">Name</span>
+                <input
+                  type="text"
+                  name="name"
+                  defaultValue={player.name}
+                  required
+                  className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  name="isGoalkeeper"
+                  defaultChecked={player.isGoalkeeper}
+                  className="h-4 w-4 accent-zinc-900"
+                />
+                Torhüter
+              </label>
+
+              <button
+                type="submit"
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:border-zinc-500"
+              >
+                Spieler speichern
+              </button>
+            </form>
+
+            <form action={deletePlayer} className="rounded-xl border border-red-900/40 bg-red-950/20 p-3">
+              <input type="hidden" name="playerId" value={player.id} />
+              <button
+                type="submit"
+                className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-1.5 text-xs text-red-200 hover:border-red-700"
+              >
+                Spieler löschen
+              </button>
+            </form>
+          </div>
         ) : null}
 
         {player.isGoalkeeper ? (
@@ -367,8 +737,107 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
           </section>
         )}
 
-        {!player.isGoalkeeper ? (
-          <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+        <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Siege</p>
+            <p className="mt-1 text-2xl font-bold text-red-300">{wins}</p>
+          </article>
+          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Unentschieden</p>
+            <p className="mt-1 text-2xl font-bold text-red-300">{draws}</p>
+          </article>
+          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Niederlagen</p>
+            <p className="mt-1 text-2xl font-bold text-red-300">{losses}</p>
+          </article>
+          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Siegesquote</p>
+            <p className="mt-1 text-2xl font-bold text-red-300">{winRate}%</p>
+          </article>
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+          <h2 className="mb-3 text-lg font-semibold text-zinc-900">Tor-Momente</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">1:0 Treffer</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{firstGoalGoals}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Ausgleichstreffer</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{equalizerGoals}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Frühe Tore (0-15&apos;)</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{earlyGoals}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Späte Tore (76+&apos;)</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{lateGoals}</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+          <h2 className="mb-3 text-lg font-semibold text-zinc-900">Kombinationen & Teamplay</h2>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Häufigster Duo-Partner (Einsätze)</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {bestDuoByGames
+                  ? `${teammateNameById.get(bestDuoByGames.teammateId) ?? `Spieler #${bestDuoByGames.teammateId}`} · ${bestDuoByGames.gamesTogether} Spiele`
+                  : "Keine Duo-Daten"}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Stärkstes Duo (Teamtore)</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {bestDuoByTeamGoals
+                  ? `${teammateNameById.get(bestDuoByTeamGoals.teammateId) ?? `Spieler #${bestDuoByTeamGoals.teammateId}`} · ${bestDuoByTeamGoals.teamGoals} Tore`
+                  : "Keine Duo-Daten"}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Anfälligstes Duo (Gegentore/Spiel)</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {worstDuoByGoalsAgainstPerGame
+                  ? `${teammateNameById.get(worstDuoByGoalsAgainstPerGame.teammateId) ?? `Spieler #${worstDuoByGoalsAgainstPerGame.teammateId}`} · ${(worstDuoByGoalsAgainstPerGame.goalsAgainst / Math.max(worstDuoByGoalsAgainstPerGame.gamesTogether, 1)).toFixed(2)}`
+                  : "Keine Duo-Daten"}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Stärkstes Trio (Teamtore)</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {bestTrioByTeamGoals
+                  ? `${teammateNameById.get(bestTrioByTeamGoals.teammate1Id) ?? `Spieler #${bestTrioByTeamGoals.teammate1Id}`}, ${teammateNameById.get(bestTrioByTeamGoals.teammate2Id) ?? `Spieler #${bestTrioByTeamGoals.teammate2Id}`} · ${bestTrioByTeamGoals.teamGoals} Tore`
+                  : "Keine Trio-Daten"}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Top-Vorlagengeber für {player.name}</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {topAssistProvider
+                  ? `${teammateNameById.get(topAssistProvider[0]) ?? `Spieler #${topAssistProvider[0]}`} · ${topAssistProvider[1]} Vorlagen`
+                  : "Keine Daten"}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Top-Abnehmer von {player.name}</p>
+              <p className="mt-1 text-sm text-zinc-300 font-semibold">
+                {topAssistReceiver
+                  ? `${teammateNameById.get(topAssistReceiver[0]) ?? `Spieler #${topAssistReceiver[0]}`} · ${topAssistReceiver[1]} Assists`
+                  : "Keine Daten"}
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">Wetterprofil</h2>
@@ -400,8 +869,18 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
             </article>
 
             <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">🎯 Assists bei Schönwetter</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{sunnyAssists}</p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
               <p className="text-xs uppercase tracking-wider text-zinc-500">🏆 MVPs bei Schlechtwetter</p>
               <p className="mt-1 text-2xl font-bold text-red-300">{badWeatherMvps}</p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">🏆 MVPs bei Schönwetter</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{sunnyMvps}</p>
             </article>
           </div>
 
@@ -429,8 +908,7 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
               {weatherSummary}
             </p>
           ) : null}
-          </section>
-        ) : null}
+        </section>
 
         <section>
           <h2 className="mb-2 font-medium">Letzte Spiele</h2>
