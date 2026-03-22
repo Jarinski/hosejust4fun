@@ -7,6 +7,20 @@ type TopAssistsPageProps = {
   searchParams: Promise<{ seasonId?: string | string[] }>;
 };
 
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybePgError = error as { code?: string; message?: string };
+
+  if (typeof maybePgError.message === "string" && maybePgError.message.includes(columnName)) {
+    return true;
+  }
+
+  return maybePgError.code === "42703";
+}
+
 export default async function TopAssistsPage({ searchParams }: TopAssistsPageProps) {
   const allSeasons = await db
     .select({
@@ -31,8 +45,24 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
 
   const assistsCount = sql<number>`count(${goalEvents.id})`;
 
-  const topAssists = validSeasonId
-    ? await db
+  let ownGoalColumnAvailable = true;
+  let goalkeeperColumnAvailable = true;
+
+  const queryTopAssists = async (options: { filterOwnGoals: boolean; filterGoalkeepers: boolean }) => {
+    const filters = [isNotNull(goalEvents.assistPlayerId)];
+
+    if (options.filterOwnGoals) {
+      filters.push(eq(goalEvents.isOwnGoal, false));
+    }
+
+    if (options.filterGoalkeepers) {
+      filters.push(eq(players.isGoalkeeper, false));
+    }
+
+    if (validSeasonId) {
+      filters.push(eq(matches.seasonId, validSeasonId));
+
+      return db
         .select({
           playerId: players.id,
           playerName: players.name,
@@ -41,33 +71,57 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
         .from(goalEvents)
         .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
         .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(
-          and(
-            isNotNull(goalEvents.assistPlayerId),
-            eq(goalEvents.isOwnGoal, false),
-            eq(players.isGoalkeeper, false),
-            eq(matches.seasonId, validSeasonId),
-          ),
-        )
-        .groupBy(players.id, players.name)
-        .orderBy(desc(assistsCount), asc(players.name))
-    : await db
-        .select({
-          playerId: players.id,
-          playerName: players.name,
-          assists: assistsCount.as("assists"),
-        })
-        .from(goalEvents)
-        .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-        .where(
-          and(
-            isNotNull(goalEvents.assistPlayerId),
-            eq(goalEvents.isOwnGoal, false),
-            eq(players.isGoalkeeper, false),
-          ),
-        )
+        .where(and(...filters))
         .groupBy(players.id, players.name)
         .orderBy(desc(assistsCount), asc(players.name));
+    }
+
+    return db
+      .select({
+        playerId: players.id,
+        playerName: players.name,
+        assists: assistsCount.as("assists"),
+      })
+      .from(goalEvents)
+      .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+      .where(and(...filters))
+      .groupBy(players.id, players.name)
+      .orderBy(desc(assistsCount), asc(players.name));
+  };
+
+  let topAssists: Array<{ playerId: number; playerName: string; assists: number }> = [];
+
+  try {
+    topAssists = await queryTopAssists({ filterOwnGoals: true, filterGoalkeepers: true });
+  } catch (error) {
+    if (isMissingColumnError(error, "is_own_goal")) {
+      ownGoalColumnAvailable = false;
+      try {
+        topAssists = await queryTopAssists({ filterOwnGoals: false, filterGoalkeepers: true });
+      } catch (fallbackError) {
+        if (!isMissingColumnError(fallbackError, "is_goalkeeper")) {
+          throw fallbackError;
+        }
+
+        goalkeeperColumnAvailable = false;
+        topAssists = await queryTopAssists({ filterOwnGoals: false, filterGoalkeepers: false });
+      }
+    } else if (isMissingColumnError(error, "is_goalkeeper")) {
+      goalkeeperColumnAvailable = false;
+      try {
+        topAssists = await queryTopAssists({ filterOwnGoals: true, filterGoalkeepers: false });
+      } catch (fallbackError) {
+        if (!isMissingColumnError(fallbackError, "is_own_goal")) {
+          throw fallbackError;
+        }
+
+        ownGoalColumnAvailable = false;
+        topAssists = await queryTopAssists({ filterOwnGoals: false, filterGoalkeepers: false });
+      }
+    } else {
+      throw error;
+    }
+  }
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
@@ -107,6 +161,18 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
 
       {seasonIdParam && !selectedSeason ? (
         <p className="mb-4 text-sm text-amber-300">Ungültige Saison gewählt. Es werden alle Saisons angezeigt.</p>
+      ) : null}
+
+      {!ownGoalColumnAvailable ? (
+        <p className="mb-4 text-sm text-amber-300">
+          Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt). Top-Assists wird ohne Eigentor-Filter berechnet.
+        </p>
+      ) : null}
+
+      {!goalkeeperColumnAvailable ? (
+        <p className="mb-4 text-sm text-amber-300">
+          Torwart-Kennzeichnung ist in dieser Datenbank noch nicht verfügbar (Migration fehlt). Top-Assists wird ohne Torwart-Filter berechnet.
+        </p>
       ) : null}
 
       {topAssists.length === 0 ? (

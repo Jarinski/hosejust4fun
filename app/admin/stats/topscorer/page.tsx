@@ -14,11 +14,11 @@ function isMissingColumnError(error: unknown, columnName: string) {
 
   const maybePgError = error as { code?: string; message?: string };
 
-  if (maybePgError.code === "42703") {
+  if (typeof maybePgError.message === "string" && maybePgError.message.includes(columnName)) {
     return true;
   }
 
-  return typeof maybePgError.message === "string" && maybePgError.message.includes(columnName);
+  return maybePgError.code === "42703";
 }
 
 export default async function TopscorerPage({ searchParams }: TopscorerPageProps) {
@@ -45,70 +45,80 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   let ownGoalColumnAvailable = true;
+  let goalkeeperColumnAvailable = true;
   let topScorers: Array<{ playerId: number; playerName: string; goals: number }> = [];
 
-  try {
-    topScorers = validSeasonId
-      ? await db
-          .select({
-            playerId: players.id,
-            playerName: players.name,
-            goals: goalsCount.as("goals"),
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(
-            and(
-              eq(goalEvents.isOwnGoal, false),
-              eq(players.isGoalkeeper, false),
-              eq(matches.seasonId, validSeasonId),
-            ),
-          )
-          .groupBy(players.id, players.name)
-          .orderBy(desc(goalsCount), asc(players.name))
-      : await db
-          .select({
-            playerId: players.id,
-            playerName: players.name,
-            goals: goalsCount.as("goals"),
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-          .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGoalkeeper, false)))
-          .groupBy(players.id, players.name)
-          .orderBy(desc(goalsCount), asc(players.name));
-  } catch (error) {
-    if (!isMissingColumnError(error, "is_own_goal")) {
-      throw error;
+  const queryTopScorers = async (options: { filterOwnGoals: boolean; filterGoalkeepers: boolean }) => {
+    const filters = [];
+
+    if (options.filterOwnGoals) {
+      filters.push(eq(goalEvents.isOwnGoal, false));
     }
 
-    ownGoalColumnAvailable = false;
+    if (options.filterGoalkeepers) {
+      filters.push(eq(players.isGoalkeeper, false));
+    }
 
-    topScorers = validSeasonId
-      ? await db
-          .select({
-            playerId: players.id,
-            playerName: players.name,
-            goals: goalsCount.as("goals"),
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(and(eq(players.isGoalkeeper, false), eq(matches.seasonId, validSeasonId)))
-          .groupBy(players.id, players.name)
-          .orderBy(desc(goalsCount), asc(players.name))
-      : await db
-          .select({
-            playerId: players.id,
-            playerName: players.name,
-            goals: goalsCount.as("goals"),
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-          .where(eq(players.isGoalkeeper, false))
-          .groupBy(players.id, players.name)
-          .orderBy(desc(goalsCount), asc(players.name));
+    if (validSeasonId) {
+      filters.push(eq(matches.seasonId, validSeasonId));
+
+      return db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+          goals: goalsCount.as("goals"),
+        })
+        .from(goalEvents)
+        .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(and(...filters))
+        .groupBy(players.id, players.name)
+        .orderBy(desc(goalsCount), asc(players.name));
+    }
+
+    return db
+      .select({
+        playerId: players.id,
+        playerName: players.name,
+        goals: goalsCount.as("goals"),
+      })
+      .from(goalEvents)
+      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+      .where(and(...filters))
+      .groupBy(players.id, players.name)
+      .orderBy(desc(goalsCount), asc(players.name));
+  };
+
+  try {
+    topScorers = await queryTopScorers({ filterOwnGoals: true, filterGoalkeepers: true });
+  } catch (error) {
+    if (isMissingColumnError(error, "is_own_goal")) {
+      ownGoalColumnAvailable = false;
+      try {
+        topScorers = await queryTopScorers({ filterOwnGoals: false, filterGoalkeepers: true });
+      } catch (fallbackError) {
+        if (!isMissingColumnError(fallbackError, "is_goalkeeper")) {
+          throw fallbackError;
+        }
+
+        goalkeeperColumnAvailable = false;
+        topScorers = await queryTopScorers({ filterOwnGoals: false, filterGoalkeepers: false });
+      }
+    } else if (isMissingColumnError(error, "is_goalkeeper")) {
+      goalkeeperColumnAvailable = false;
+      try {
+        topScorers = await queryTopScorers({ filterOwnGoals: true, filterGoalkeepers: false });
+      } catch (fallbackError) {
+        if (!isMissingColumnError(fallbackError, "is_own_goal")) {
+          throw fallbackError;
+        }
+
+        ownGoalColumnAvailable = false;
+        topScorers = await queryTopScorers({ filterOwnGoals: false, filterGoalkeepers: false });
+      }
+    } else {
+      throw error;
+    }
   }
 
   return (
@@ -154,6 +164,12 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       {!ownGoalColumnAvailable ? (
         <p className="mb-4 text-sm text-amber-300">
           Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt). Topscorer wird ohne Eigentor-Filter berechnet.
+        </p>
+      ) : null}
+
+      {!goalkeeperColumnAvailable ? (
+        <p className="mb-4 text-sm text-amber-300">
+          Torwart-Kennzeichnung ist in dieser Datenbank noch nicht verfügbar (Migration fehlt). Topscorer wird ohne Torwart-Filter berechnet.
         </p>
       ) : null}
 
