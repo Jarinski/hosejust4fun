@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray, lt } from "drizzle-orm";
+import { asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import {
@@ -16,6 +16,26 @@ import {
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 
+async function ensureMatchdayTables() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "matchdays" (
+      "id" serial PRIMARY KEY,
+      "match_date" date NOT NULL UNIQUE,
+      "location" text,
+      "created_at" timestamp DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "matchday_participants" (
+      "id" serial PRIMARY KEY,
+      "matchday_id" integer NOT NULL REFERENCES "matchdays"("id"),
+      "player_id" integer NOT NULL REFERENCES "players"("id"),
+      "created_at" timestamp DEFAULT now()
+    )
+  `);
+}
+
 function formatIsoDate(isoDate: string) {
   return new Intl.DateTimeFormat("de-DE", {
     dateStyle: "full",
@@ -29,21 +49,17 @@ export default async function MatchdayPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   await requireAdmin("/spieltag");
+  await ensureMatchdayTables();
 
   const queryParams = await searchParams;
   const upcomingMondayIso = getUpcomingMondayIsoInBerlin();
 
-  const [activePlayers, matchdayRows, weather] = await Promise.all([
+  const [activePlayers, weather] = await Promise.all([
     db
       .select({ id: players.id, name: players.name })
       .from(players)
       .where(eq(players.isActive, true))
       .orderBy(asc(players.name)),
-    db
-      .select({ id: matchdays.id })
-      .from(matchdays)
-      .where(eq(matchdays.matchDate, upcomingMondayIso))
-      .limit(1),
     fetchWeatherForMatchDate(upcomingMondayIso).catch(() => ({
       conditionLabel: "Wetterdaten nicht verfügbar",
       temperatureC: null,
@@ -53,6 +69,12 @@ export default async function MatchdayPage({
       humidityPct: null,
     })),
   ]);
+
+  const matchdayRows = await db
+    .select({ id: matchdays.id })
+    .from(matchdays)
+    .where(eq(matchdays.matchDate, upcomingMondayIso))
+    .limit(1);
 
   const matchdayId = matchdayRows[0]?.id ?? null;
 
@@ -210,6 +232,7 @@ export default async function MatchdayPage({
     "use server";
 
     await requireAdminInAction();
+    await ensureMatchdayTables();
 
     const targetDateRaw = String(formData.get("matchDate") ?? "").trim();
 
