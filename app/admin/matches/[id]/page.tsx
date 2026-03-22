@@ -567,6 +567,10 @@ export default async function MatchDetailPage({
             statisticNotes.push(
               `📊 Bereits das ${seasonEarlyGoals}. Tor in den ersten 15 Minuten in dieser Saison.`
             );
+          } else {
+            statisticNotes.push(
+              `📊 Saisonzähler: ${seasonEarlyGoals}. Tor in den ersten 15 Minuten.`
+            );
           }
         }
 
@@ -576,15 +580,24 @@ export default async function MatchDetailPage({
             statisticNotes.push(
               `📊 Bereits das ${seasonLateGoals}. Tor in den letzten 15 Minuten in dieser Saison.`
             );
+          } else {
+            statisticNotes.push(
+              `📊 Saisonzähler: ${seasonLateGoals}. Tor in den letzten 15 Minuten.`
+            );
           }
         }
 
         if (wasNilNil) {
           const firstGoalCount = incrementMapCounter(firstGoalsByScorer, goal.scorerPlayerId);
+          const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+
           if (firstGoalCount >= 5) {
-            const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
             statisticNotes.push(
               `🎯 Das ist ${getGermanPossessiveName(scorerName)} ${firstGoalCount}. 1:0 in dieser Saison.`
+            );
+          } else {
+            statisticNotes.push(
+              `🎯 Saisonzähler: ${getGermanPossessiveName(scorerName)} ${firstGoalCount}. 1:0 in dieser Saison.`
             );
           }
         }
@@ -601,6 +614,12 @@ export default async function MatchDetailPage({
             const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
             statisticNotes.push(
               `🅰️ ${assistName} hat ${scorerName} bereits zum ${comboCount}. Mal ein Tor aufgelegt.`
+            );
+          } else {
+            const assistName = playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`;
+            const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+            statisticNotes.push(
+              `🅰️ Saisonzähler: ${assistName} auf ${scorerName} zum ${comboCount}. Mal.`
             );
           }
         }
