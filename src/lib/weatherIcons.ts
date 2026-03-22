@@ -37,14 +37,13 @@ export function isRainLikeWeather(input: WeatherIconInput) {
 }
 
 export function isSunnyLikeWeather(input: WeatherIconInput) {
-  const label = normalizeLabel(input.conditionLabel).toLowerCase();
   const precip = input.precipMm ?? null;
   const temperature = input.temperatureC ?? null;
-  return (
-    SUNNY_REGEX.test(label) ||
-    PARTLY_SUNNY_REGEX.test(label) ||
-    (precip !== null && precip === 0 && temperature !== null && temperature >= 15)
-  );
+
+  // Wichtig: "Schönwetter" soll exakt zur UI-Definition passen,
+  // damit Spiele nicht gleichzeitig in Schönwetter und Schlechtwetter landen.
+  // Definition laut Statistik-Karte: 0 mm Niederschlag UND mindestens 15 °C.
+  return precip !== null && precip === 0 && temperature !== null && temperature >= 15;
 }
 
 export function getWeatherPresentation(input: WeatherIconInput): WeatherIconResult {
