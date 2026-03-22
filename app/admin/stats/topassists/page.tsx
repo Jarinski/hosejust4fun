@@ -45,6 +45,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
           and(
             isNotNull(goalEvents.assistPlayerId),
             eq(goalEvents.isOwnGoal, false),
+            eq(players.isGoalkeeper, false),
             eq(matches.seasonId, validSeasonId),
           ),
         )
@@ -58,7 +59,13 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
         })
         .from(goalEvents)
         .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-        .where(and(isNotNull(goalEvents.assistPlayerId), eq(goalEvents.isOwnGoal, false)))
+        .where(
+          and(
+            isNotNull(goalEvents.assistPlayerId),
+            eq(goalEvents.isOwnGoal, false),
+            eq(players.isGoalkeeper, false),
+          ),
+        )
         .groupBy(players.id, players.name)
         .orderBy(desc(assistsCount), asc(players.name));
 

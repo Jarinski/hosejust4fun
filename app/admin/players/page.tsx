@@ -11,6 +11,7 @@ export default async function PlayersPage() {
     .select({
       id: players.id,
       name: players.name,
+      isGoalkeeper: players.isGoalkeeper,
       createdAt: players.createdAt,
     })
     .from(players)
@@ -43,6 +44,7 @@ export default async function PlayersPage() {
               <thead className="bg-stone-50 text-zinc-600">
                 <tr>
                   <th className="px-4 py-3 text-left">Name</th>
+                  <th className="px-4 py-3 text-left">Rolle</th>
                   <th className="px-4 py-3 text-left">Erstellt am</th>
                   <th className="px-4 py-3 text-left">Aktion</th>
                 </tr>
@@ -51,6 +53,9 @@ export default async function PlayersPage() {
                 {allPlayers.map((player) => (
                   <tr key={player.id} className="border-t border-zinc-300">
                     <td className="px-4 py-3">{player.name}</td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
+                    </td>
                     <td className="px-4 py-3 text-zinc-600">
                       {player.createdAt ? player.createdAt.toLocaleDateString("de-DE") : "—"}
                     </td>

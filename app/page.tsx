@@ -1,9 +1,19 @@
 import Link from "next/link";
 import { alias } from "drizzle-orm/pg-core";
-import { asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import {
+  goalEvents,
+  matchParticipants,
+  matchdayParticipants,
+  matchdays,
+  matches,
+  matchWeather,
+  players,
+  seasons,
+} from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
+import { buildMatchdayForecast } from "@/src/lib/matchdayForecast";
 import { fetchWeatherForMatchDate, getUpcomingMondayIsoInBerlin } from "@/src/lib/weather";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 
@@ -255,6 +265,148 @@ export default async function Home() {
     windKmh: nextMatchWeather.windKmh,
   });
 
+  const upcomingMatchdayRows = await db
+    .select({ id: matchdays.id })
+    .from(matchdays)
+    .where(eq(matchdays.matchDate, upcomingMondayIso))
+    .limit(1)
+    .catch(() => []);
+
+  const upcomingMatchdayId = upcomingMatchdayRows[0]?.id ?? null;
+
+  const upcomingSelectedPlayers =
+    upcomingMatchdayId !== null
+      ? await db
+          .select({ id: players.id, name: players.name })
+          .from(matchdayParticipants)
+          .innerJoin(players, eq(matchdayParticipants.playerId, players.id))
+          .where(eq(matchdayParticipants.matchdayId, upcomingMatchdayId))
+          .orderBy(asc(players.name))
+          .catch(() => [])
+      : [];
+
+  const selectedPlayerIdsSet = new Set(upcomingSelectedPlayers.map((player) => player.id));
+
+  const historicalMatchesForForecast = await db
+    .select({
+      id: matches.id,
+      matchDate: matches.matchDate,
+      team1Score: matches.team1Score,
+      team2Score: matches.team2Score,
+    })
+    .from(matches)
+    .where(lt(matches.matchDate, new Date(`${upcomingMondayIso}T23:59:59`)))
+    .orderBy(desc(matches.matchDate), desc(matches.id));
+
+  const historicalMatchIdsForForecast = historicalMatchesForForecast.map((match) => match.id);
+
+  const historicalParticipantsForForecast =
+    historicalMatchIdsForForecast.length > 0
+      ? await db
+          .select({
+            matchId: matchParticipants.matchId,
+            playerId: matchParticipants.playerId,
+            teamSide: matchParticipants.teamSide,
+          })
+          .from(matchParticipants)
+          .where(inArray(matchParticipants.matchId, historicalMatchIdsForForecast))
+      : [];
+
+  const participantIdsByMatch = new Map<number, Set<number>>();
+  for (const row of historicalParticipantsForForecast) {
+    const existing = participantIdsByMatch.get(row.matchId) ?? new Set<number>();
+    existing.add(row.playerId);
+    participantIdsByMatch.set(row.matchId, existing);
+  }
+
+  const returningPlayers = upcomingSelectedPlayers
+    .map((player) => {
+      let missedMatches = 0;
+
+      for (const match of historicalMatchesForForecast) {
+        const participantIds = participantIdsByMatch.get(match.id) ?? new Set<number>();
+        if (participantIds.has(player.id)) {
+          break;
+        }
+        missedMatches += 1;
+      }
+
+      return {
+        name: player.name,
+        missedMatches,
+      };
+    })
+    .filter((entry) => entry.missedMatches >= 2)
+    .sort((a, b) => b.missedMatches - a.missedMatches);
+
+  const playerNameById = new Map(upcomingSelectedPlayers.map((player) => [player.id, player.name]));
+
+  const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number }>();
+
+  for (const match of historicalMatchesForForecast) {
+    const team1 = historicalParticipantsForForecast
+      .filter((participant) => participant.matchId === match.id && participant.teamSide === "team_1")
+      .map((participant) => participant.playerId)
+      .sort((a, b) => a - b);
+
+    const team2 = historicalParticipantsForForecast
+      .filter((participant) => participant.matchId === match.id && participant.teamSide === "team_2")
+      .map((participant) => participant.playerId)
+      .sort((a, b) => a - b);
+
+    const team1Won = match.team1Score > match.team2Score;
+    const team2Won = match.team2Score > match.team1Score;
+
+    const processTeam = (playerIds: number[], won: boolean) => {
+      for (let i = 0; i < playerIds.length; i += 1) {
+        for (let j = i + 1; j < playerIds.length; j += 1) {
+          const a = playerIds[i]!;
+          const b = playerIds[j]!;
+          const key = `${a}-${b}`;
+          const previous = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0 };
+          duoStatsByKey.set(key, {
+            gamesTogether: previous.gamesTogether + 1,
+            winsTogether: previous.winsTogether + (won ? 1 : 0),
+          });
+        }
+      }
+    };
+
+    processTeam(team1, team1Won);
+    processTeam(team2, team2Won);
+  }
+
+  const strongestDuo = Array.from(duoStatsByKey.entries())
+    .map(([key, stats]) => {
+      const [aRaw, bRaw] = key.split("-");
+      const a = Number(aRaw);
+      const b = Number(bRaw);
+      return { a, b, ...stats };
+    })
+    .filter(
+      (duo) =>
+        selectedPlayerIdsSet.has(duo.a) && selectedPlayerIdsSet.has(duo.b) && duo.gamesTogether >= 2
+    )
+    .map((duo) => ({
+      playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
+      playerBName: playerNameById.get(duo.b) ?? `Spieler #${duo.b}`,
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+    }))
+    .sort((a, b) => {
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })[0] ?? null;
+
+  const nextMatchForecastLines = buildMatchdayForecast({
+    selectedPlayers: upcomingSelectedPlayers,
+    weather: nextMatchWeather,
+    strongestDuo,
+    returningPlayers,
+  });
+
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
   const mvpCount = sql<number>`count(${matches.id})`;
@@ -453,6 +605,14 @@ export default async function Home() {
             <p className="mt-1 text-xs text-zinc-500">
               Hinweis: Prognosen können sich bis zum Spieltag noch ändern.
             </p>
+
+            <ul className="mt-3 space-y-2 text-sm text-zinc-700">
+              {nextMatchForecastLines.map((line, index) => (
+                <li key={`${line}-${index}`} className="rounded-lg border border-zinc-300 bg-white px-3 py-2.5">
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

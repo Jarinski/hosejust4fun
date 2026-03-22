@@ -43,6 +43,13 @@
       "when": 1774193400000,
       "tag": "0005_matchday_forecast",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774195200000,
+      "tag": "0006_goalkeeper_flag",
+      "breakpoints": true
     }
   ]
 }

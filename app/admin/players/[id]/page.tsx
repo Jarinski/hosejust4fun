@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players } from "@/src/db/schema";
+import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
 import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
 type PlayerDetailPageProps = {
@@ -106,6 +108,7 @@ function buildWeatherSummary(values: {
 export default async function PlayerDetailPage({ params }: PlayerDetailPageProps) {
   const routeParams = await params;
   const playerId = Number(routeParams.id);
+  const isAdmin = Boolean(await getAdminSession());
 
   if (!Number.isInteger(playerId)) {
     return (
@@ -125,6 +128,7 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
     .select({
       id: players.id,
       name: players.name,
+      isGoalkeeper: players.isGoalkeeper,
     })
     .from(players)
     .where(eq(players.id, playerId))
@@ -149,6 +153,16 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   const gameCountRows = await db
     .select({ count: sql<number>`count(*)` })
     .from(matchParticipants)
+    .where(eq(matchParticipants.playerId, playerId));
+
+  const participationRows = await db
+    .select({
+      teamSide: matchParticipants.teamSide,
+      team1Score: matches.team1Score,
+      team2Score: matches.team2Score,
+    })
+    .from(matchParticipants)
+    .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
     .where(eq(matchParticipants.playerId, playerId));
 
   const goalCountRows = await db
@@ -254,6 +268,36 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
   const goals = goalCountRows[0]?.count ?? 0;
   const assists = assistCountRows[0]?.count ?? 0;
 
+  const goalkeeperGoalsAgainst = participationRows.reduce((sum, row) => {
+    const conceded = row.teamSide === "team_1" ? row.team2Score : row.team1Score;
+    return sum + conceded;
+  }, 0);
+  const cleanSheets = participationRows.filter((row) => {
+    const conceded = row.teamSide === "team_1" ? row.team2Score : row.team1Score;
+    return conceded === 0;
+  }).length;
+  const goalsAgainstPerGame = games > 0 ? (goalkeeperGoalsAgainst / games).toFixed(2) : "0.00";
+
+  async function updatePlayerRole(formData: FormData) {
+    "use server";
+
+    await requireAdminInAction();
+
+    const targetPlayerId = Number(formData.get("playerId"));
+    if (!Number.isInteger(targetPlayerId)) {
+      redirect("/admin/players");
+    }
+
+    const isGoalkeeper = formData.get("isGoalkeeper") === "on";
+
+    await db
+      .update(players)
+      .set({ isGoalkeeper })
+      .where(eq(players.id, targetPlayerId));
+
+    redirect(`/admin/players/${targetPlayerId}`);
+  }
+
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
@@ -262,22 +306,69 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
         </p>
         <h1 className="mb-4 text-2xl font-semibold">{player.name}</h1>
 
-        <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
-            <p className="text-xs uppercase tracking-wider text-zinc-500">Spiele</p>
-            <p className="mt-1 text-2xl font-bold text-red-300">{games}</p>
-          </article>
-          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
-            <p className="text-xs uppercase tracking-wider text-zinc-500">Tore</p>
-            <p className="mt-1 text-2xl font-bold text-red-300">{goals}</p>
-          </article>
-          <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
-            <p className="text-xs uppercase tracking-wider text-zinc-500">Assists</p>
-            <p className="mt-1 text-2xl font-bold text-red-300">{assists}</p>
-          </article>
-        </section>
+        <p className="mb-4 inline-flex rounded-full border border-zinc-300 bg-stone-50 px-3 py-1 text-xs font-medium uppercase tracking-wider text-zinc-600">
+          {player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
+        </p>
 
-        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+        {isAdmin ? (
+          <form action={updatePlayerRole} className="mb-6 flex items-center gap-3 rounded-xl border border-zinc-300 bg-stone-50 p-3">
+            <input type="hidden" name="playerId" value={player.id} />
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                name="isGoalkeeper"
+                defaultChecked={player.isGoalkeeper}
+                className="h-4 w-4 accent-zinc-900"
+              />
+              Torhüter
+            </label>
+            <button
+              type="submit"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:border-zinc-500"
+            >
+              Rolle speichern
+            </button>
+          </form>
+        ) : null}
+
+        {player.isGoalkeeper ? (
+          <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Spiele</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{games}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Gegentore</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{goalkeeperGoalsAgainst}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Gegentore / Spiel</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{goalsAgainstPerGame}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Weiße Weste</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{cleanSheets}</p>
+            </article>
+          </section>
+        ) : (
+          <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Spiele</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{games}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Tore</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{goals}</p>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Assists</p>
+              <p className="mt-1 text-2xl font-bold text-red-300">{assists}</p>
+            </article>
+          </section>
+        )}
+
+        {!player.isGoalkeeper ? (
+          <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">Wetterprofil</h2>
@@ -338,7 +429,8 @@ export default async function PlayerDetailPage({ params }: PlayerDetailPageProps
               {weatherSummary}
             </p>
           ) : null}
-        </section>
+          </section>
+        ) : null}
 
         <section>
           <h2 className="mb-2 font-medium">Letzte Spiele</h2>

@@ -21,6 +21,7 @@ export default async function NewPlayerPage({
 
     const nameRaw = formData.get("name");
     const name = String(nameRaw ?? "").trim();
+    const isGoalkeeper = formData.get("isGoalkeeper") === "on";
 
     if (!name) {
       redirect("/admin/players/new?error=1");
@@ -28,7 +29,10 @@ export default async function NewPlayerPage({
 
     const insertedPlayers = await db
       .insert(players)
-      .values({ name })
+      .values({
+        name,
+        isGoalkeeper,
+      })
       .returning({ id: players.id });
 
     const newPlayerId = insertedPlayers[0]?.id;
@@ -64,6 +68,11 @@ export default async function NewPlayerPage({
               required
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
             />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="isGoalkeeper" className="h-4 w-4 accent-zinc-900" />
+            <span className="text-sm text-zinc-700">Torhüter</span>
           </label>
 
           <button

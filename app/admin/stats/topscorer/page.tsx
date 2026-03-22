@@ -58,7 +58,13 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           .from(goalEvents)
           .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
           .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(and(eq(goalEvents.isOwnGoal, false), eq(matches.seasonId, validSeasonId)))
+          .where(
+            and(
+              eq(goalEvents.isOwnGoal, false),
+              eq(players.isGoalkeeper, false),
+              eq(matches.seasonId, validSeasonId),
+            ),
+          )
           .groupBy(players.id, players.name)
           .orderBy(desc(goalsCount), asc(players.name))
       : await db
@@ -69,7 +75,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           })
           .from(goalEvents)
           .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-          .where(eq(goalEvents.isOwnGoal, false))
+          .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGoalkeeper, false)))
           .groupBy(players.id, players.name)
           .orderBy(desc(goalsCount), asc(players.name));
   } catch (error) {
@@ -89,7 +95,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           .from(goalEvents)
           .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
           .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(eq(matches.seasonId, validSeasonId))
+          .where(and(eq(players.isGoalkeeper, false), eq(matches.seasonId, validSeasonId)))
           .groupBy(players.id, players.name)
           .orderBy(desc(goalsCount), asc(players.name))
       : await db
@@ -100,6 +106,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           })
           .from(goalEvents)
           .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .where(eq(players.isGoalkeeper, false))
           .groupBy(players.id, players.name)
           .orderBy(desc(goalsCount), asc(players.name));
   }
