@@ -15,7 +15,12 @@ import {
   fetchWeatherForMatchDate,
   getUpcomingMondayIsoInBerlin,
 } from "@/src/lib/weather";
-import { getWeatherPresentation, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
+import {
+  getWeatherPresentation,
+  isMildDryWeather,
+  isRainLikeWeather,
+  isSunnyLikeWeather,
+} from "@/src/lib/weatherIcons";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 
 async function ensureMatchdayTables() {
@@ -287,11 +292,21 @@ export default async function MatchdayPage({
       : [];
 
   const isUpcomingCold = weather.temperatureC !== null && weather.temperatureC < 10;
+  const isUpcomingRain = isRainLikeWeather({
+    conditionLabel: weather.conditionLabel,
+    precipMm: weather.precipMm,
+  });
   const isUpcomingSunny = isSunnyLikeWeather({
     conditionLabel: weather.conditionLabel,
     precipMm: weather.precipMm,
     temperatureC: weather.temperatureC,
   });
+  const isUpcomingMildDry =
+    isMildDryWeather({
+      conditionLabel: weather.conditionLabel,
+      precipMm: weather.precipMm,
+      temperatureC: weather.temperatureC,
+    }) && !isUpcomingSunny;
 
   const relevantWeatherMatchIds = historicalWeatherRows
     .filter((row) => {
@@ -305,6 +320,29 @@ export default async function MatchdayPage({
           precipMm: row.precipMm,
           temperatureC: row.temperatureC,
         });
+      }
+
+      if (isUpcomingRain) {
+        return isRainLikeWeather({
+          conditionLabel: row.conditionLabel,
+          precipMm: row.precipMm,
+        });
+      }
+
+      if (isUpcomingMildDry) {
+        const rowIsSunny = isSunnyLikeWeather({
+          conditionLabel: row.conditionLabel,
+          precipMm: row.precipMm,
+          temperatureC: row.temperatureC,
+        });
+
+        return (
+          isMildDryWeather({
+            conditionLabel: row.conditionLabel,
+            precipMm: row.precipMm,
+            temperatureC: row.temperatureC,
+          }) && !rowIsSunny
+        );
       }
 
       return false;
@@ -367,9 +405,16 @@ export default async function MatchdayPage({
   }
 
   const weatherPerformance =
-    (isUpcomingCold || isUpcomingSunny) && relevantWeatherMatchIds.length > 0
+    (isUpcomingCold || isUpcomingRain || isUpcomingSunny || isUpcomingMildDry) &&
+    relevantWeatherMatchIds.length > 0
       ? {
-          condition: isUpcomingCold ? ("cold" as const) : ("sunny" as const),
+          condition: isUpcomingCold
+            ? ("cold" as const)
+            : isUpcomingRain
+              ? ("rain" as const)
+              : isUpcomingMildDry
+                ? ("mild_dry" as const)
+              : ("sunny" as const),
           sampleMatches: relevantWeatherMatchIds.length,
           topScorer: getTopLeader(goalsByPlayer),
           topAssist: getTopLeader(assistsByPlayer),

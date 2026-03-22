@@ -41,12 +41,22 @@ export function isRainLikeWeather(input: WeatherIconInput) {
 }
 
 export function isSunnyLikeWeather(input: WeatherIconInput) {
+  const label = normalizeLabel(input.conditionLabel).toLowerCase();
   const precip = input.precipMm ?? null;
   const temperature = input.temperatureC ?? null;
+  const hasSunshineSignal = SUNNY_REGEX.test(label) || PARTLY_SUNNY_REGEX.test(label);
 
   // Wichtig: "Schönwetter" soll exakt zur UI-Definition passen,
   // damit Spiele nicht gleichzeitig in Schönwetter und Schlechtwetter landen.
-  // Definition laut Statistik-Karte: 0 mm Niederschlag UND mindestens 15 °C.
+  // Definition: 0 mm Niederschlag UND mindestens 15 °C UND Sonnenschein/Heiterkeit.
+  return precip !== null && precip === 0 && temperature !== null && temperature >= 15 && hasSunshineSignal;
+}
+
+export function isMildDryWeather(input: WeatherIconInput) {
+  const precip = input.precipMm ?? null;
+  const temperature = input.temperatureC ?? null;
+
+  // Warm und trocken, aber nicht zwingend sonnig (z. B. 20°C + bewölkt).
   return precip !== null && precip === 0 && temperature !== null && temperature >= 15;
 }
 

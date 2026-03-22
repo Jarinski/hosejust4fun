@@ -27,7 +27,7 @@ type WeatherPerformanceLeader = {
 };
 
 type WeatherPerformanceInsight = {
-  condition: "cold" | "sunny";
+  condition: "cold" | "sunny" | "rain" | "mild_dry";
   sampleMatches: number;
   topScorer: WeatherPerformanceLeader | null;
   topAssist: WeatherPerformanceLeader | null;
@@ -53,7 +53,7 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
   }
 
   lines.push(
-    selectedPlayers.length >= 12
+    selectedPlayers.length >= 18
       ? `🔥 ${selectedPlayers.length} Zusagen! Das riecht nach Champions-League-Niveau auf Kunstrasen.`
       : `📋 Bisher ${selectedPlayers.length} Zusagen – Kader steht, Ausreden zählen nicht mehr.`
   );
@@ -78,7 +78,14 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
   const isWindy = weather.windKmh !== null && weather.windKmh >= 20;
 
   if (weatherPerformance && weatherPerformance.sampleMatches >= 2) {
-    const weatherLabel = weatherPerformance.condition === "cold" ? "Kälte" : "Schönwetter";
+    const weatherLabel =
+      weatherPerformance.condition === "cold"
+        ? "Kälte"
+        : weatherPerformance.condition === "rain"
+          ? "Regen"
+          : weatherPerformance.condition === "mild_dry"
+            ? "Mild-&-trocken"
+          : "Schönwetter";
 
     if (weatherPerformance.topScorer) {
       lines.push(
