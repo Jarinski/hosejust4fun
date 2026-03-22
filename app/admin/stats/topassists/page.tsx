@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import { goalEvents, matches, players, seasons } from "@/src/db/schema";
 
 type TopAssistsPageProps = {
-  searchParams: Promise<{ seasonId?: string | string[] }>;
+  searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
 };
 
 function isMissingColumnError(error: unknown, columnName: string) {
@@ -34,6 +34,8 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
   const seasonIdParam = Array.isArray(params.seasonId)
     ? params.seasonId[0]
     : params.seasonId;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
@@ -42,6 +44,8 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
       : null;
 
   const validSeasonId = selectedSeason?.id;
+  const sortKey = sortParam === "player" || sortParam === "assists" ? sortParam : "assists";
+  const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const assistsCount = sql<number>`count(${goalEvents.id})`;
 
@@ -123,6 +127,45 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     }
   }
 
+  const sortedTopAssists = [...topAssists].sort((a, b) => {
+    if (sortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      if (byName !== 0) {
+        return sortDir === "asc" ? byName : -byName;
+      }
+
+      return b.assists - a.assists;
+    }
+
+    if (a.assists !== b.assists) {
+      return sortDir === "asc" ? a.assists - b.assists : b.assists - a.assists;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const buildSortHref = (column: "player" | "assists") => {
+    const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
+    const query = new URLSearchParams();
+
+    if (validSeasonId) {
+      query.set("seasonId", String(validSeasonId));
+    }
+
+    query.set("sort", column);
+    query.set("dir", nextDir);
+
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (column: "player" | "assists") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
+
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
@@ -182,12 +225,20 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
         <table className="min-w-full text-sm">
           <thead className="bg-stone-50 text-zinc-600">
             <tr>
-              <th className="px-4 py-3 text-left">Spieler</th>
-              <th className="px-4 py-3 text-left">Assists</th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("player")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Spieler <span className="text-xs">{sortArrow("player")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("assists")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Assists <span className="text-xs">{sortArrow("assists")}</span>
+                </Link>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {topAssists.map((entry) => (
+            {sortedTopAssists.map((entry) => (
               <tr key={entry.playerId} className="border-t border-zinc-300">
                 <td className="px-4 py-3">{entry.playerName}</td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.assists}</td>

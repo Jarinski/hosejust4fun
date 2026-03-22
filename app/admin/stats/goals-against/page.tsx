@@ -4,7 +4,13 @@ import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
 type GoalsAgainstPageProps = {
-  searchParams: Promise<{ seasonId?: string | string[] }>;
+  searchParams: Promise<{
+    seasonId?: string | string[];
+    playerSort?: string | string[];
+    playerDir?: string | string[];
+    duoSort?: string | string[];
+    duoDir?: string | string[];
+  }>;
 };
 
 type PlayerAgainstStats = {
@@ -31,6 +37,10 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
 
   const params = await searchParams;
   const seasonIdParam = Array.isArray(params.seasonId) ? params.seasonId[0] : params.seasonId;
+  const playerSortParam = Array.isArray(params.playerSort) ? params.playerSort[0] : params.playerSort;
+  const playerDirParam = Array.isArray(params.playerDir) ? params.playerDir[0] : params.playerDir;
+  const duoSortParam = Array.isArray(params.duoSort) ? params.duoSort[0] : params.duoSort;
+  const duoDirParam = Array.isArray(params.duoDir) ? params.duoDir[0] : params.duoDir;
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
@@ -39,6 +49,23 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
       : null;
 
   const validSeasonId = selectedSeason?.id;
+  const playerSortKey =
+    playerSortParam === "player" ||
+    playerSortParam === "games" ||
+    playerSortParam === "goalsAgainst" ||
+    playerSortParam === "avg"
+      ? playerSortParam
+      : "avg";
+  const playerSortDir = playerDirParam === "asc" ? "asc" : "desc";
+  const duoSortKey =
+    duoSortParam === "player1" ||
+    duoSortParam === "player2" ||
+    duoSortParam === "games" ||
+    duoSortParam === "goalsAgainst" ||
+    duoSortParam === "avg"
+      ? duoSortParam
+      : "avg";
+  const duoSortDir = duoDirParam === "asc" ? "asc" : "desc";
 
   const participantsPromise = validSeasonId
     ? db
@@ -186,7 +213,7 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
     ]),
   );
 
-  const playerRows = playerIds.length
+  const playerNameRows = playerIds.length
     ? await db
         .select({
           id: players.id,
@@ -196,59 +223,156 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
         .where(inArray(players.id, playerIds))
     : [];
 
-  const playerNameById = new Map(playerRows.map((player) => [player.id, player.name]));
+  const playerNameById = new Map(playerNameRows.map((player) => [player.id, player.name]));
 
-  const playerRowsSorted = Array.from(playerStats.values())
+  const playerRows = Array.from(playerStats.values())
     .map((entry) => ({
       ...entry,
       playerName: playerNameById.get(entry.playerId) ?? `Spieler #${entry.playerId}`,
       goalsAgainstPerGame: entry.games > 0 ? (entry.goalsAgainst / entry.games).toFixed(2) : "0.00",
-    }))
-    .sort((a, b) => {
-      const avgDiff = Number(b.goalsAgainstPerGame) - Number(a.goalsAgainstPerGame);
-      if (avgDiff !== 0) {
-        return avgDiff;
+    }));
+
+  const playerRowsSorted = [...playerRows].sort((a, b) => {
+    if (playerSortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      if (byName !== 0) {
+        return playerSortDir === "asc" ? byName : -byName;
       }
 
-      if (b.goalsAgainst !== a.goalsAgainst) {
-        return b.goalsAgainst - a.goalsAgainst;
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    if (playerSortKey === "games") {
+      if (a.games !== b.games) {
+        return playerSortDir === "asc" ? a.games - b.games : b.games - a.games;
       }
 
-      if (b.games !== a.games) {
-        return b.games - a.games;
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    if (playerSortKey === "goalsAgainst") {
+      if (a.goalsAgainst !== b.goalsAgainst) {
+        return playerSortDir === "asc"
+          ? a.goalsAgainst - b.goalsAgainst
+          : b.goalsAgainst - a.goalsAgainst;
       }
 
-      return a.playerName.localeCompare(b.playerName, "de");
-    });
+      return b.games - a.games;
+    }
 
-  const duoRowsSorted = Array.from(duoStats.values())
+    const avgDiff = Number(a.goalsAgainstPerGame) - Number(b.goalsAgainstPerGame);
+    if (avgDiff !== 0) {
+      return playerSortDir === "asc" ? avgDiff : -avgDiff;
+    }
+
+    if (b.goalsAgainst !== a.goalsAgainst) {
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const duoRows = Array.from(duoStats.values())
     .map((entry) => ({
       ...entry,
       player1Name: playerNameById.get(entry.player1Id) ?? `Spieler #${entry.player1Id}`,
       player2Name: playerNameById.get(entry.player2Id) ?? `Spieler #${entry.player2Id}`,
       goalsAgainstPerGame: entry.games > 0 ? (entry.goalsAgainst / entry.games).toFixed(2) : "0.00",
-    }))
-    .sort((a, b) => {
-      const avgDiff = Number(b.goalsAgainstPerGame) - Number(a.goalsAgainstPerGame);
-      if (avgDiff !== 0) {
-        return avgDiff;
+    }));
+
+  const duoRowsSorted = [...duoRows].sort((a, b) => {
+    if (duoSortKey === "player1") {
+      const byName = a.player1Name.localeCompare(b.player1Name, "de");
+      if (byName !== 0) {
+        return duoSortDir === "asc" ? byName : -byName;
       }
 
-      if (b.goalsAgainst !== a.goalsAgainst) {
-        return b.goalsAgainst - a.goalsAgainst;
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    if (duoSortKey === "player2") {
+      const byName = a.player2Name.localeCompare(b.player2Name, "de");
+      if (byName !== 0) {
+        return duoSortDir === "asc" ? byName : -byName;
       }
 
-      if (b.games !== a.games) {
-        return b.games - a.games;
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    if (duoSortKey === "games") {
+      if (a.games !== b.games) {
+        return duoSortDir === "asc" ? a.games - b.games : b.games - a.games;
       }
 
-      const byPlayer1 = a.player1Name.localeCompare(b.player1Name, "de");
-      if (byPlayer1 !== 0) {
-        return byPlayer1;
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    if (duoSortKey === "goalsAgainst") {
+      if (a.goalsAgainst !== b.goalsAgainst) {
+        return duoSortDir === "asc"
+          ? a.goalsAgainst - b.goalsAgainst
+          : b.goalsAgainst - a.goalsAgainst;
       }
 
-      return a.player2Name.localeCompare(b.player2Name, "de");
-    });
+      return b.games - a.games;
+    }
+
+    const avgDiff = Number(a.goalsAgainstPerGame) - Number(b.goalsAgainstPerGame);
+    if (avgDiff !== 0) {
+      return duoSortDir === "asc" ? avgDiff : -avgDiff;
+    }
+
+    if (b.goalsAgainst !== a.goalsAgainst) {
+      return b.goalsAgainst - a.goalsAgainst;
+    }
+
+    const byPlayer1 = a.player1Name.localeCompare(b.player1Name, "de");
+    if (byPlayer1 !== 0) {
+      return byPlayer1;
+    }
+
+    return a.player2Name.localeCompare(b.player2Name, "de");
+  });
+
+  const buildSortHref = (
+    table: "player" | "duo",
+    column: "player" | "games" | "goalsAgainst" | "avg" | "player1" | "player2",
+  ) => {
+    const query = new URLSearchParams();
+    if (validSeasonId) {
+      query.set("seasonId", String(validSeasonId));
+    }
+
+    query.set("playerSort", playerSortKey);
+    query.set("playerDir", playerSortDir);
+    query.set("duoSort", duoSortKey);
+    query.set("duoDir", duoSortDir);
+
+    if (table === "player") {
+      const nextDir = playerSortKey === column && playerSortDir === "desc" ? "asc" : "desc";
+      query.set("playerSort", String(column));
+      query.set("playerDir", nextDir);
+    } else {
+      const nextDir = duoSortKey === column && duoSortDir === "desc" ? "asc" : "desc";
+      query.set("duoSort", String(column));
+      query.set("duoDir", nextDir);
+    }
+
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (
+    table: "player" | "duo",
+    column: "player" | "games" | "goalsAgainst" | "avg" | "player1" | "player2",
+  ) => {
+    const active = table === "player" ? playerSortKey === column : duoSortKey === column;
+    if (!active) {
+      return "↕";
+    }
+
+    const dir = table === "player" ? playerSortDir : duoSortDir;
+    return dir === "asc" ? "↑" : "↓";
+  };
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
@@ -268,10 +392,10 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
             <table className="min-w-full text-sm">
               <thead className="bg-stone-50 text-zinc-600">
                 <tr>
-                  <th className="px-4 py-3 text-left">Spieler</th>
-                  <th className="px-4 py-3 text-left">Spiele</th>
-                  <th className="px-4 py-3 text-left">Gegentore</th>
-                  <th className="px-4 py-3 text-left">Gegentore / Spiel</th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("player", "player")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler <span className="text-xs">{sortArrow("player", "player")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("player", "games")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spiele <span className="text-xs">{sortArrow("player", "games")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("player", "goalsAgainst")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gegentore <span className="text-xs">{sortArrow("player", "goalsAgainst")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("player", "avg")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gegentore / Spiel <span className="text-xs">{sortArrow("player", "avg")}</span></Link></th>
                 </tr>
               </thead>
               <tbody>
@@ -296,11 +420,11 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
             <table className="min-w-full text-sm">
               <thead className="bg-stone-50 text-zinc-600">
                 <tr>
-                  <th className="px-4 py-3 text-left">Spieler 1</th>
-                  <th className="px-4 py-3 text-left">Spieler 2</th>
-                  <th className="px-4 py-3 text-left">Gemeinsame Spiele</th>
-                  <th className="px-4 py-3 text-left">Gegentore zusammen</th>
-                  <th className="px-4 py-3 text-left">Gegentore / Spiel</th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("duo", "player1")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler 1 <span className="text-xs">{sortArrow("duo", "player1")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("duo", "player2")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler 2 <span className="text-xs">{sortArrow("duo", "player2")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("duo", "games")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gemeinsame Spiele <span className="text-xs">{sortArrow("duo", "games")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("duo", "goalsAgainst")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gegentore zusammen <span className="text-xs">{sortArrow("duo", "goalsAgainst")}</span></Link></th>
+                  <th className="px-4 py-3 text-left"><Link href={buildSortHref("duo", "avg")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gegentore / Spiel <span className="text-xs">{sortArrow("duo", "avg")}</span></Link></th>
                 </tr>
               </thead>
               <tbody>

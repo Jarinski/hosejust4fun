@@ -8,7 +8,7 @@ const scorers = alias(players, "scorers");
 const assisters = alias(players, "assisters");
 
 type ScorerAssistCombosPageProps = {
-  searchParams: Promise<{ seasonId?: string | string[] }>;
+  searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
 };
 
 export default async function ScorerAssistCombosPage({
@@ -26,6 +26,8 @@ export default async function ScorerAssistCombosPage({
   const seasonIdParam = Array.isArray(params.seasonId)
     ? params.seasonId[0]
     : params.seasonId;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
@@ -34,6 +36,11 @@ export default async function ScorerAssistCombosPage({
       : null;
 
   const validSeasonId = selectedSeason?.id;
+  const sortKey =
+    sortParam === "assister" || sortParam === "scorer" || sortParam === "count"
+      ? sortParam
+      : "count";
+  const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const combosCount = sql<number>`count(${goalEvents.id})`;
 
@@ -76,6 +83,59 @@ export default async function ScorerAssistCombosPage({
         )
         .groupBy(assisters.id, assisters.name, scorers.id, scorers.name)
         .orderBy(desc(combosCount), asc(assisters.name), asc(scorers.name));
+
+  const sortedCombos = [...combos].sort((a, b) => {
+    if (sortKey === "assister") {
+      const byAssister = a.assisterName.localeCompare(b.assisterName, "de");
+      if (byAssister !== 0) {
+        return sortDir === "asc" ? byAssister : -byAssister;
+      }
+
+      return b.count - a.count;
+    }
+
+    if (sortKey === "scorer") {
+      const byScorer = a.scorerName.localeCompare(b.scorerName, "de");
+      if (byScorer !== 0) {
+        return sortDir === "asc" ? byScorer : -byScorer;
+      }
+
+      return b.count - a.count;
+    }
+
+    if (a.count !== b.count) {
+      return sortDir === "asc" ? a.count - b.count : b.count - a.count;
+    }
+
+    const byAssister = a.assisterName.localeCompare(b.assisterName, "de");
+    if (byAssister !== 0) {
+      return byAssister;
+    }
+
+    return a.scorerName.localeCompare(b.scorerName, "de");
+  });
+
+  const buildSortHref = (column: "assister" | "scorer" | "count") => {
+    const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
+    const query = new URLSearchParams();
+
+    if (validSeasonId) {
+      query.set("seasonId", String(validSeasonId));
+    }
+
+    query.set("sort", column);
+    query.set("dir", nextDir);
+
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (column: "assister" | "scorer" | "count") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
@@ -124,13 +184,25 @@ export default async function ScorerAssistCombosPage({
         <table className="min-w-full text-sm">
           <thead className="bg-stone-50 text-zinc-600">
             <tr>
-              <th className="px-4 py-3 text-left">Vorlagengeber</th>
-              <th className="px-4 py-3 text-left">Torschütze</th>
-              <th className="px-4 py-3 text-left">Anzahl</th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("assister")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Vorlagengeber <span className="text-xs">{sortArrow("assister")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("scorer")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Torschütze <span className="text-xs">{sortArrow("scorer")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("count")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Anzahl <span className="text-xs">{sortArrow("count")}</span>
+                </Link>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {combos.map((entry) => (
+            {sortedCombos.map((entry) => (
               <tr key={`${entry.assisterId}-${entry.scorerId}`} className="border-t border-zinc-300">
                 <td className="px-4 py-3">{entry.assisterName}</td>
                 <td className="px-4 py-3">{entry.scorerName}</td>

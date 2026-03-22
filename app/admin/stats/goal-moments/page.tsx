@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import { goalEvents, matches, players, seasons } from "@/src/db/schema";
 
 type GoalMomentsPageProps = {
-  searchParams: Promise<{ seasonId?: string | string[] }>;
+  searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
 };
 
 type CounterEntry = {
@@ -47,11 +47,42 @@ function StatsTable({
   title,
   emptyLabel,
   rows,
+  sortKey,
+  sortDir,
+  buildSortHref,
 }: {
   title: string;
   emptyLabel: string;
   rows: CounterEntry[];
+  sortKey: "player" | "count";
+  sortDir: "asc" | "desc";
+  buildSortHref: (column: "player" | "count") => string;
 }) {
+  const sortedRows = [...rows].sort((a, b) => {
+    if (sortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      if (byName !== 0) {
+        return sortDir === "asc" ? byName : -byName;
+      }
+
+      return b.count - a.count;
+    }
+
+    if (a.count !== b.count) {
+      return sortDir === "asc" ? a.count - b.count : b.count - a.count;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const sortArrow = (column: "player" | "count") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
+
   return (
     <section>
       <h2 className="mb-3 text-lg font-medium">{title}</h2>
@@ -62,12 +93,12 @@ function StatsTable({
           <table className="min-w-full text-sm">
             <thead className="bg-stone-50 text-zinc-600">
               <tr>
-                <th className="px-4 py-3 text-left">Spieler</th>
-                <th className="px-4 py-3 text-left">Anzahl</th>
+                <th className="px-4 py-3 text-left"><Link href={buildSortHref("player")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler <span className="text-xs">{sortArrow("player")}</span></Link></th>
+                <th className="px-4 py-3 text-left"><Link href={buildSortHref("count")} className="inline-flex items-center gap-1 hover:text-zinc-900">Anzahl <span className="text-xs">{sortArrow("count")}</span></Link></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((entry) => (
+              {sortedRows.map((entry) => (
                 <tr key={entry.playerId} className="border-t border-zinc-300">
                   <td className="px-4 py-3">{entry.playerName}</td>
                   <td className="px-4 py-3 font-semibold text-red-300">{entry.count}</td>
@@ -92,6 +123,8 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
 
   const params = await searchParams;
   const seasonIdParam = Array.isArray(params.seasonId) ? params.seasonId[0] : params.seasonId;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
@@ -100,6 +133,22 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
       : null;
 
   const validSeasonId = selectedSeason?.id;
+  const sortKey = sortParam === "player" || sortParam === "count" ? sortParam : "count";
+  const sortDir = dirParam === "asc" ? "asc" : "desc";
+
+  const buildSortHref = (column: "player" | "count") => {
+    const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
+    const query = new URLSearchParams();
+
+    if (validSeasonId) {
+      query.set("seasonId", String(validSeasonId));
+    }
+
+    query.set("sort", column);
+    query.set("dir", nextDir);
+
+    return `?${query.toString()}`;
+  };
 
   const rawGoals: GoalRow[] = validSeasonId
     ? await db
@@ -243,24 +292,36 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
               title="Wer erzielt am häufigsten das 1:0?"
               emptyLabel="Kein 1:0-Torschütze erfasst."
               rows={firstGoals}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              buildSortHref={buildSortHref}
             />
 
             <StatsTable
               title="Wer erzielt am häufigsten den Ausgleich?"
               emptyLabel="Kein Ausgleichstreffer erfasst."
               rows={equalizers}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              buildSortHref={buildSortHref}
             />
 
             <StatsTable
               title="Wer trifft häufig in den ersten 15 Minuten?"
               emptyLabel="Keine Treffer in den ersten 15 Minuten erfasst."
               rows={earlyGoals}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              buildSortHref={buildSortHref}
             />
 
             <StatsTable
               title="Wer trifft häufig in den letzten 15 Minuten?"
               emptyLabel="Keine Treffer in den letzten 15 Minuten erfasst."
               rows={lateGoals}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              buildSortHref={buildSortHref}
             />
           </div>
         )}

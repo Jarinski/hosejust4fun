@@ -1,4 +1,5 @@
 import { asc, eq, sql } from "drizzle-orm";
+import Link from "next/link";
 import { db } from "@/src/db";
 import {
   goalEvents,
@@ -155,11 +156,34 @@ function combineStatsByExactName(
         totalAssists: legacyAssists + modernAssists,
         totalPoints: legacyPoints + modernPoints,
       };
-    })
-    .sort((a, b) => a.playerName.localeCompare(b.playerName, "de"));
+    });
 }
 
-export default async function CombinedStatsPage() {
+type CombinedStatsPageProps = {
+  searchParams: Promise<{ sort?: string | string[]; dir?: string | string[] }>;
+};
+
+export default async function CombinedStatsPage({ searchParams }: CombinedStatsPageProps) {
+  const params = await searchParams;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
+  const sortKey =
+    sortParam === "player" ||
+    sortParam === "legacyGames" ||
+    sortParam === "legacyGoals" ||
+    sortParam === "legacyAssists" ||
+    sortParam === "legacyPoints" ||
+    sortParam === "modernGames" ||
+    sortParam === "modernGoals" ||
+    sortParam === "modernAssists" ||
+    sortParam === "totalGames" ||
+    sortParam === "totalGoals" ||
+    sortParam === "totalAssists" ||
+    sortParam === "totalPoints"
+      ? sortParam
+      : "player";
+  const sortDir = dirParam === "desc" ? "desc" : "asc";
+
   const [legacyStats, modernStats]: [LegacyPlayerRow[], ModernPlayerRow[]] = await Promise.all([
     db
       .select({
@@ -175,6 +199,64 @@ export default async function CombinedStatsPage() {
 
   const combinedStats = combineStatsByExactName(legacyStats, modernStats);
 
+  const sortedCombinedStats = [...combinedStats].sort((a, b) => {
+    if (sortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      return sortDir === "asc" ? byName : -byName;
+    }
+
+    const byValue = Number(a[sortKey]) - Number(b[sortKey]);
+    if (byValue !== 0) {
+      return sortDir === "asc" ? byValue : -byValue;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const buildSortHref = (
+    column:
+      | "player"
+      | "legacyGames"
+      | "legacyGoals"
+      | "legacyAssists"
+      | "legacyPoints"
+      | "modernGames"
+      | "modernGoals"
+      | "modernAssists"
+      | "totalGames"
+      | "totalGoals"
+      | "totalAssists"
+      | "totalPoints",
+  ) => {
+    const nextDir = sortKey === column && sortDir === "asc" ? "desc" : "asc";
+    const query = new URLSearchParams();
+    query.set("sort", column);
+    query.set("dir", nextDir);
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (
+    column:
+      | "player"
+      | "legacyGames"
+      | "legacyGoals"
+      | "legacyAssists"
+      | "legacyPoints"
+      | "modernGames"
+      | "modernGoals"
+      | "modernAssists"
+      | "totalGames"
+      | "totalGoals"
+      | "totalAssists"
+      | "totalPoints",
+  ) => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
+
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-7xl rounded-2xl border border-zinc-300 bg-white p-6">
@@ -187,22 +269,22 @@ export default async function CombinedStatsPage() {
             <table className="min-w-full text-sm">
               <thead className="bg-stone-100 text-zinc-600">
                 <tr>
-                  <th className="px-3 py-2 text-left">Spieler</th>
-                  <th className="px-3 py-2 text-left">Legacy Spiele</th>
-                  <th className="px-3 py-2 text-left">Legacy Tore</th>
-                  <th className="px-3 py-2 text-left">Legacy Vorlagen</th>
-                  <th className="px-3 py-2 text-left">Legacy Punkte</th>
-                  <th className="px-3 py-2 text-left">Modern Spiele</th>
-                  <th className="px-3 py-2 text-left">Modern Tore</th>
-                  <th className="px-3 py-2 text-left">Modern Vorlagen</th>
-                  <th className="px-3 py-2 text-left">Gesamt Spiele</th>
-                  <th className="px-3 py-2 text-left">Gesamt Tore</th>
-                  <th className="px-3 py-2 text-left">Gesamt Vorlagen</th>
-                  <th className="px-3 py-2 text-left">Gesamt Punkte</th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("player")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler <span className="text-xs">{sortArrow("player")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("legacyGames")} className="inline-flex items-center gap-1 hover:text-zinc-900">Legacy Spiele <span className="text-xs">{sortArrow("legacyGames")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("legacyGoals")} className="inline-flex items-center gap-1 hover:text-zinc-900">Legacy Tore <span className="text-xs">{sortArrow("legacyGoals")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("legacyAssists")} className="inline-flex items-center gap-1 hover:text-zinc-900">Legacy Vorlagen <span className="text-xs">{sortArrow("legacyAssists")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("legacyPoints")} className="inline-flex items-center gap-1 hover:text-zinc-900">Legacy Punkte <span className="text-xs">{sortArrow("legacyPoints")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("modernGames")} className="inline-flex items-center gap-1 hover:text-zinc-900">Modern Spiele <span className="text-xs">{sortArrow("modernGames")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("modernGoals")} className="inline-flex items-center gap-1 hover:text-zinc-900">Modern Tore <span className="text-xs">{sortArrow("modernGoals")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("modernAssists")} className="inline-flex items-center gap-1 hover:text-zinc-900">Modern Vorlagen <span className="text-xs">{sortArrow("modernAssists")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("totalGames")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gesamt Spiele <span className="text-xs">{sortArrow("totalGames")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("totalGoals")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gesamt Tore <span className="text-xs">{sortArrow("totalGoals")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("totalAssists")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gesamt Vorlagen <span className="text-xs">{sortArrow("totalAssists")}</span></Link></th>
+                  <th className="px-3 py-2 text-left"><Link href={buildSortHref("totalPoints")} className="inline-flex items-center gap-1 hover:text-zinc-900">Gesamt Punkte <span className="text-xs">{sortArrow("totalPoints")}</span></Link></th>
                 </tr>
               </thead>
               <tbody>
-                {combinedStats.map((player) => (
+                {sortedCombinedStats.map((player) => (
                   <tr key={player.playerName} className="border-t border-zinc-300 bg-white">
                     <td className="px-3 py-2 font-medium text-zinc-900">{player.playerName}</td>
                     <td className="px-3 py-2">{player.legacyGames}</td>

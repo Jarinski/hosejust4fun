@@ -9,7 +9,16 @@ type DuoCount = {
   gamesTogether: number;
 };
 
-export default async function DuosPage() {
+type DuosPageProps = {
+  searchParams: Promise<{ sort?: string | string[]; dir?: string | string[] }>;
+};
+
+export default async function DuosPage({ searchParams }: DuosPageProps) {
+  const params = await searchParams;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
+  const sortKey = sortParam === "player1" || sortParam === "player2" || sortParam === "games" ? sortParam : "games";
+  const sortDir = dirParam === "asc" ? "asc" : "desc";
   const participants = await db
     .select({
       matchId: matchParticipants.matchId,
@@ -104,19 +113,56 @@ export default async function DuosPage() {
       ...duo,
       player1Name: playerNameById.get(duo.player1Id) ?? `Spieler #${duo.player1Id}`,
       player2Name: playerNameById.get(duo.player2Id) ?? `Spieler #${duo.player2Id}`,
-    }))
-    .sort((a, b) => {
-      if (b.gamesTogether !== a.gamesTogether) {
-        return b.gamesTogether - a.gamesTogether;
-      }
+    }));
 
+  const sortedDuos = [...duosWithNames].sort((a, b) => {
+    if (sortKey === "player1") {
       const byPlayer1 = a.player1Name.localeCompare(b.player1Name, "de");
       if (byPlayer1 !== 0) {
-        return byPlayer1;
+        return sortDir === "asc" ? byPlayer1 : -byPlayer1;
       }
 
-      return a.player2Name.localeCompare(b.player2Name, "de");
-    });
+      return b.gamesTogether - a.gamesTogether;
+    }
+
+    if (sortKey === "player2") {
+      const byPlayer2 = a.player2Name.localeCompare(b.player2Name, "de");
+      if (byPlayer2 !== 0) {
+        return sortDir === "asc" ? byPlayer2 : -byPlayer2;
+      }
+
+      return b.gamesTogether - a.gamesTogether;
+    }
+
+    if (a.gamesTogether !== b.gamesTogether) {
+      return sortDir === "asc"
+        ? a.gamesTogether - b.gamesTogether
+        : b.gamesTogether - a.gamesTogether;
+    }
+
+    const byPlayer1 = a.player1Name.localeCompare(b.player1Name, "de");
+    if (byPlayer1 !== 0) {
+      return byPlayer1;
+    }
+
+    return a.player2Name.localeCompare(b.player2Name, "de");
+  });
+
+  const buildSortHref = (column: "player1" | "player2" | "games") => {
+    const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
+    const query = new URLSearchParams();
+    query.set("sort", column);
+    query.set("dir", nextDir);
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (column: "player1" | "player2" | "games") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
@@ -131,13 +177,25 @@ export default async function DuosPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-stone-50 text-zinc-600">
               <tr>
-                <th className="px-4 py-3 text-left">Spieler 1</th>
-                <th className="px-4 py-3 text-left">Spieler 2</th>
-                <th className="px-4 py-3 text-left">Gemeinsame Spiele</th>
+                <th className="px-4 py-3 text-left">
+                  <Link href={buildSortHref("player1")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                    Spieler 1 <span className="text-xs">{sortArrow("player1")}</span>
+                  </Link>
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <Link href={buildSortHref("player2")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                    Spieler 2 <span className="text-xs">{sortArrow("player2")}</span>
+                  </Link>
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <Link href={buildSortHref("games")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                    Gemeinsame Spiele <span className="text-xs">{sortArrow("games")}</span>
+                  </Link>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {duosWithNames.map((duo) => (
+              {sortedDuos.map((duo) => (
                 <tr key={`${duo.player1Id}-${duo.player2Id}`} className="border-t border-zinc-300">
                   <td className="px-4 py-3">{duo.player1Name}</td>
                   <td className="px-4 py-3">{duo.player2Name}</td>

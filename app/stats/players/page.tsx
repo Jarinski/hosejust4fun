@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import {
@@ -112,7 +113,24 @@ async function getModernPlayerStats(): Promise<ModernPlayerRow[]> {
   return Array.from(statsByPlayer.values());
 }
 
-export default async function PlayerStatsPage() {
+type PlayerStatsPageProps = {
+  searchParams: Promise<{ sort?: string | string[]; dir?: string | string[] }>;
+};
+
+export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageProps) {
+  const params = await searchParams;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
+  const sortKey =
+    sortParam === "player" ||
+    sortParam === "games" ||
+    sortParam === "goals" ||
+    sortParam === "assists" ||
+    sortParam === "points"
+      ? sortParam
+      : "player";
+  const sortDir = dirParam === "desc" ? "desc" : "asc";
+
   const [legacyStats, modernStats]: [LegacyPlayerRow[], ModernPlayerRow[]] = await Promise.all([
     db
       .select({
@@ -127,6 +145,36 @@ export default async function PlayerStatsPage() {
       .orderBy(asc(legacyPlayerCareerStats.playerName)),
     getModernPlayerStats(),
   ]);
+
+  const sortedLegacyStats = [...legacyStats].sort((a, b) => {
+    if (sortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      return sortDir === "asc" ? byName : -byName;
+    }
+
+    const byValue = Number(a[sortKey]) - Number(b[sortKey]);
+    if (byValue !== 0) {
+      return sortDir === "asc" ? byValue : -byValue;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const buildSortHref = (column: "player" | "games" | "goals" | "assists" | "points") => {
+    const nextDir = sortKey === column && sortDir === "asc" ? "desc" : "asc";
+    const query = new URLSearchParams();
+    query.set("sort", column);
+    query.set("dir", nextDir);
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (column: "player" | "games" | "goals" | "assists" | "points") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
 
   const legacyByPlayerName = new Map<string, LegacyPlayerRow>(
     legacyStats.map((row) => [row.playerName, row])
@@ -170,15 +218,15 @@ export default async function PlayerStatsPage() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-stone-100 text-zinc-600">
                     <tr>
-                      <th className="px-3 py-2 text-left">Spieler</th>
-                      <th className="px-3 py-2 text-left">Einsätze</th>
-                      <th className="px-3 py-2 text-left">Tore</th>
-                      <th className="px-3 py-2 text-left">Vorlagen</th>
-                      <th className="px-3 py-2 text-left">Punkte</th>
+                      <th className="px-3 py-2 text-left"><Link href={buildSortHref("player")} className="inline-flex items-center gap-1 hover:text-zinc-900">Spieler <span className="text-xs">{sortArrow("player")}</span></Link></th>
+                      <th className="px-3 py-2 text-left"><Link href={buildSortHref("games")} className="inline-flex items-center gap-1 hover:text-zinc-900">Einsätze <span className="text-xs">{sortArrow("games")}</span></Link></th>
+                      <th className="px-3 py-2 text-left"><Link href={buildSortHref("goals")} className="inline-flex items-center gap-1 hover:text-zinc-900">Tore <span className="text-xs">{sortArrow("goals")}</span></Link></th>
+                      <th className="px-3 py-2 text-left"><Link href={buildSortHref("assists")} className="inline-flex items-center gap-1 hover:text-zinc-900">Vorlagen <span className="text-xs">{sortArrow("assists")}</span></Link></th>
+                      <th className="px-3 py-2 text-left"><Link href={buildSortHref("points")} className="inline-flex items-center gap-1 hover:text-zinc-900">Punkte <span className="text-xs">{sortArrow("points")}</span></Link></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {legacyStats.map((player) => (
+                    {sortedLegacyStats.map((player) => (
                       <tr key={player.id} className="border-t border-zinc-300">
                         <td className="px-3 py-2 text-zinc-900">{player.playerName}</td>
                         <td className="px-3 py-2">{player.games}</td>

@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import { goalEvents, matches, players, seasons } from "@/src/db/schema";
 
 type TopscorerPageProps = {
-  searchParams: Promise<{ seasonId?: string | string[] }>;
+  searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
 };
 
 function isMissingColumnError(error: unknown, columnName: string) {
@@ -44,6 +44,8 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   const seasonIdParam = Array.isArray(params.seasonId)
     ? params.seasonId[0]
     : params.seasonId;
+  const sortParam = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+  const dirParam = Array.isArray(params.dir) ? params.dir[0] : params.dir;
 
   const parsedSeasonId = Number(seasonIdParam);
   const selectedSeason =
@@ -52,6 +54,8 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       : null;
 
   const validSeasonId = selectedSeason?.id;
+  const sortKey = sortParam === "player" || sortParam === "goals" ? sortParam : "goals";
+  const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   let ownGoalColumnAvailable = true;
@@ -131,6 +135,45 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     }
   }
 
+  const sortedTopScorers = [...topScorers].sort((a, b) => {
+    if (sortKey === "player") {
+      const byName = a.playerName.localeCompare(b.playerName, "de");
+      if (byName !== 0) {
+        return sortDir === "asc" ? byName : -byName;
+      }
+
+      return b.goals - a.goals;
+    }
+
+    if (a.goals !== b.goals) {
+      return sortDir === "asc" ? a.goals - b.goals : b.goals - a.goals;
+    }
+
+    return a.playerName.localeCompare(b.playerName, "de");
+  });
+
+  const buildSortHref = (column: "player" | "goals") => {
+    const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
+    const query = new URLSearchParams();
+
+    if (validSeasonId) {
+      query.set("seasonId", String(validSeasonId));
+    }
+
+    query.set("sort", column);
+    query.set("dir", nextDir);
+
+    return `?${query.toString()}`;
+  };
+
+  const sortArrow = (column: "player" | "goals") => {
+    if (sortKey !== column) {
+      return "↕";
+    }
+
+    return sortDir === "asc" ? "↑" : "↓";
+  };
+
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-5xl rounded-2xl border border-zinc-300 bg-white p-6">
@@ -190,12 +233,20 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
         <table className="min-w-full text-sm">
           <thead className="bg-stone-50 text-zinc-600">
             <tr>
-              <th className="px-4 py-3 text-left">Spieler</th>
-              <th className="px-4 py-3 text-left">Tore</th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("player")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Spieler <span className="text-xs">{sortArrow("player")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("goals")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Tore <span className="text-xs">{sortArrow("goals")}</span>
+                </Link>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {topScorers.map((entry) => (
+            {sortedTopScorers.map((entry) => (
               <tr key={entry.playerId} className="border-t border-zinc-300">
                 <td className="px-4 py-3">{entry.playerName}</td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.goals}</td>
