@@ -9,6 +9,8 @@ const DATABASE_URL_CANDIDATES = [
   "NEON_DATABASE_URL",
 ] as const;
 
+const SSL_MODES_ALIASED_TO_VERIFY_FULL = new Set(["prefer", "require", "verify-ca"]);
+
 function resolveDatabaseUrl() {
   for (const key of DATABASE_URL_CANDIDATES) {
     const value = process.env[key]?.trim();
@@ -21,9 +23,9 @@ function resolveDatabaseUrl() {
 }
 
 function createPool(): Pool {
-  const databaseUrl = resolveDatabaseUrl();
+  const rawDatabaseUrl = resolveDatabaseUrl();
 
-  if (!databaseUrl) {
+  if (!rawDatabaseUrl) {
     const missingUrlError = `Keine DB-URL gefunden. Setze eine dieser Variablen: ${DATABASE_URL_CANDIDATES.join(
       ", "
     )}.`;
@@ -41,9 +43,19 @@ function createPool(): Pool {
     return failingPool as unknown as Pool;
   }
 
+  let normalizedDatabaseUrl = rawDatabaseUrl;
+
   try {
-    const parsed = new URL(databaseUrl);
+    const parsed = new URL(rawDatabaseUrl);
     const host = parsed.hostname;
+
+    const sslMode = parsed.searchParams.get("sslmode")?.toLowerCase();
+    const useLibpqCompat = parsed.searchParams.get("uselibpqcompat")?.toLowerCase() === "true";
+
+    if (sslMode && SSL_MODES_ALIASED_TO_VERIFY_FULL.has(sslMode) && !useLibpqCompat) {
+      parsed.searchParams.set("sslmode", "verify-full");
+      normalizedDatabaseUrl = parsed.toString();
+    }
 
     if (
       process.env.NODE_ENV === "production" &&
@@ -60,7 +72,7 @@ function createPool(): Pool {
   }
 
   return new Pool({
-    connectionString: databaseUrl,
+    connectionString: normalizedDatabaseUrl,
   });
 }
 
