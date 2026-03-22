@@ -187,15 +187,34 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     );
   }
 
-  const playerRows = await db
-    .select({
-      id: players.id,
-      name: players.name,
-      isGoalkeeper: players.isGoalkeeper,
-    })
-    .from(players)
-    .where(eq(players.id, playerId))
-    .limit(1);
+  const playerRows = await (async () => {
+    try {
+      return await db
+        .select({
+          id: players.id,
+          name: players.name,
+          isGoalkeeper: players.isGoalkeeper,
+        })
+        .from(players)
+        .where(eq(players.id, playerId))
+        .limit(1);
+    } catch {
+      // Fallback für Umgebungen, in denen die Migration für is_goalkeeper noch nicht gelaufen ist.
+      const legacyRows = await db
+        .select({
+          id: players.id,
+          name: players.name,
+        })
+        .from(players)
+        .where(eq(players.id, playerId))
+        .limit(1);
+
+      return legacyRows.map((row) => ({
+        ...row,
+        isGoalkeeper: false,
+      }));
+    }
+  })();
 
   const player = playerRows[0];
 
@@ -574,10 +593,15 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
     const isGoalkeeper = formData.get("isGoalkeeper") === "on";
 
-    await db
-      .update(players)
-      .set({ name, isGoalkeeper })
-      .where(eq(players.id, targetPlayerId));
+    try {
+      await db
+        .update(players)
+        .set({ name, isGoalkeeper })
+        .where(eq(players.id, targetPlayerId));
+    } catch {
+      // Fallback für Umgebungen ohne is_goalkeeper-Spalte.
+      await db.update(players).set({ name }).where(eq(players.id, targetPlayerId));
+    }
 
     redirect(`/admin/players/${targetPlayerId}?updated=1`);
   }
