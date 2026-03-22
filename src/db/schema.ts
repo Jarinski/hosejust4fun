@@ -1,13 +1,16 @@
 import {
   pgTable,
   pgEnum,
+  uniqueIndex,
   serial,
   text,
   boolean,
   date,
   integer,
+  numeric,
   real,
   timestamp,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 export const players = pgTable("players", {
@@ -104,4 +107,68 @@ export const matchWeather = pgTable("match_weather", {
   windKmh: real("wind_kmh"),
   humidityPct: integer("humidity_pct"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const legacyPlayerMatchStats = pgTable(
+  "legacy_player_match_stats",
+  {
+    id: serial("id").primaryKey(),
+    legacySource: text("legacy_source").notNull(),
+    legacyEventId: integer("legacy_event_id").notNull(),
+    legacyPlayerId: integer("legacy_player_id").notNull(),
+    playerName: text("player_name").notNull(),
+    matchDate: date("match_date"),
+    seasonLabel: text("season_label").notNull(),
+    teamLabel: text("team_label").notNull(),
+    opponentLabel: text("opponent_label"),
+    games: integer("games").notNull().default(1),
+    wins: integer("wins").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    goals: integer("goals").notNull().default(0),
+    assists: integer("assists").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    uniqueLegacyEventPlayer: uniqueIndex("legacy_player_match_stats_source_event_player_uq").on(
+      table.legacySource,
+      table.legacyEventId,
+      table.legacyPlayerId
+    ),
+  })
+);
+
+export const legacyPlayerMapping = pgTable(
+  "legacy_player_mapping",
+  {
+    id: serial("id").primaryKey(),
+    legacySource: text("legacy_source").notNull(),
+    legacyPlayerId: integer("legacy_player_id").notNull(),
+    legacyPlayerName: text("legacy_player_name").notNull(),
+    playerId: integer("player_id").references(() => players.id),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    uniqueLegacyPlayer: uniqueIndex("legacy_player_mapping_source_player_uq").on(
+      table.legacySource,
+      table.legacyPlayerId
+    ),
+  })
+);
+
+export const legacyPlayerCareerStats = pgTable("legacy_player_career_stats", {
+  id: uuid("id").primaryKey(),
+  playerName: text("player_name").notNull(),
+  games: integer("games").notNull(),
+  goals: integer("goals").notNull(),
+  assists: integer("assists").notNull(),
+  points: integer("points").notNull(),
+  winsRatio: numeric("wins_ratio"),
+  lossesRatio: numeric("losses_ratio"),
+  hattricks: integer("hattricks").notNull(),
+  doublepacks: integer("doublepacks").notNull(),
+  ownGoals: integer("own_goals").notNull(),
+  minutesPerGoal: integer("minutes_per_goal").notNull(),
 });

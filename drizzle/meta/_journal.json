@@ -50,6 +50,20 @@
       "when": 1774195200000,
       "tag": "0006_goalkeeper_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774201660648,
+      "tag": "0007_slimy_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774203548179,
+      "tag": "0008_pink_hiroim",
+      "breakpoints": true
     }
   ]
 }
