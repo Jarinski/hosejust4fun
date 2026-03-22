@@ -7,7 +7,10 @@ type TopNavProps = {
   isAdmin: boolean;
 };
 
-const publicNavItems = [{ href: "/", label: "Dashboard" }] as const;
+const publicNavItems = [
+  { href: "/", label: "Dashboard" },
+  { href: "/spieltag", label: "Spieltag" },
+] as const;
 
 const adminNavItems = [
   { href: "/admin/matches", label: "Matches" },

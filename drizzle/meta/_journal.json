@@ -36,6 +36,13 @@
       "when": 1774090900000,
       "tag": "0004_mighty_own_goal",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774193400000,
+      "tag": "0005_matchday_forecast",
+      "breakpoints": true
     }
   ]
 }

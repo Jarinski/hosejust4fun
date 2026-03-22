@@ -28,6 +28,13 @@ export const seasons = pgTable("seasons", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const matchdays = pgTable("matchdays", {
+  id: serial("id").primaryKey(),
+  matchDate: date("match_date").notNull().unique(),
+  location: text("location"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   seasonId: integer("season_id")
@@ -53,6 +60,17 @@ export const matchParticipants = pgTable("match_participants", {
     .notNull()
     .references(() => players.id),
   teamSide: teamSideEnum("team_side").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const matchdayParticipants = pgTable("matchday_participants", {
+  id: serial("id").primaryKey(),
+  matchdayId: integer("matchday_id")
+    .notNull()
+    .references(() => matchdays.id),
+  playerId: integer("player_id")
+    .notNull()
+    .references(() => players.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
