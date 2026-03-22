@@ -38,6 +38,33 @@ async function ensureMatchdayTables() {
   `);
 }
 
+function isRelationMissingError(error: unknown) {
+  const candidate = error as { code?: string; cause?: { code?: string } } | null;
+  return candidate?.code === "42P01" || candidate?.cause?.code === "42P01";
+}
+
+async function loadExistingMatchdayId(matchDateIso: string) {
+  const query = () =>
+    db
+      .select({ id: matchdays.id })
+      .from(matchdays)
+      .where(eq(matchdays.matchDate, matchDateIso))
+      .limit(1);
+
+  try {
+    const rows = await query();
+    return rows[0]?.id ?? null;
+  } catch (error) {
+    if (!isRelationMissingError(error)) {
+      throw error;
+    }
+
+    await ensureMatchdayTables();
+    const rows = await query();
+    return rows[0]?.id ?? null;
+  }
+}
+
 function formatIsoDate(isoDate: string) {
   return new Intl.DateTimeFormat("de-DE", {
     dateStyle: "full",
@@ -108,13 +135,7 @@ export default async function MatchdayPage({
     })),
   ]);
 
-  const matchdayRows = await db
-    .select({ id: matchdays.id })
-    .from(matchdays)
-    .where(eq(matchdays.matchDate, upcomingMondayIso))
-    .limit(1);
-
-  const matchdayId = matchdayRows[0]?.id ?? null;
+  const matchdayId = await loadExistingMatchdayId(upcomingMondayIso);
 
   const selectedPlayerIds =
     matchdayId !== null
