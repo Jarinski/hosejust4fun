@@ -22,6 +22,42 @@ type GoalEventView = {
   createdAt: Date | null;
 };
 
+type TimelineGoalView = GoalEventView & {
+  scoreAfterGoal: string;
+  statisticNotes: string[];
+};
+
+function isEarlyGoalMinute(minute: number | null) {
+  return minute !== null && minute >= 0 && minute <= 15;
+}
+
+function isLateGoalMinute(minute: number | null) {
+  return minute !== null && minute >= 76;
+}
+
+function incrementMapCounter(map: Map<number, number>, key: number) {
+  const next = (map.get(key) ?? 0) + 1;
+  map.set(key, next);
+  return next;
+}
+
+function incrementComboCounter(map: Map<string, number>, assistPlayerId: number, scorerPlayerId: number) {
+  const key = `${assistPlayerId}-${scorerPlayerId}`;
+  const next = (map.get(key) ?? 0) + 1;
+  map.set(key, next);
+  return next;
+}
+
+function getGermanPossessiveName(name: string) {
+  const normalized = name.trim();
+  if (normalized.length === 0) return "Spielers";
+  const lastChar = normalized.slice(-1).toLowerCase();
+  if (["s", "ß", "x", "z"].includes(lastChar)) {
+    return `${normalized}'`;
+  }
+  return `${normalized}s`;
+}
+
 function isMissingColumnError(error: unknown, columnName: string) {
   if (!error || typeof error !== "object") {
     return false;
@@ -89,6 +125,7 @@ export default async function MatchDetailPage({
   let matchRows: Array<{
     id: number;
     matchDate: Date;
+    seasonId: number;
     seasonName: string | null;
     team1Name: string;
     team2Name: string;
@@ -106,6 +143,7 @@ export default async function MatchDetailPage({
       .select({
         id: matches.id,
         matchDate: matches.matchDate,
+        seasonId: matches.seasonId,
         seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
@@ -129,6 +167,7 @@ export default async function MatchDetailPage({
       .select({
         id: matches.id,
         matchDate: matches.matchDate,
+        seasonId: matches.seasonId,
         seasonName: seasons.name,
         team1Name: matches.team1Name,
         team2Name: matches.team2Name,
@@ -270,6 +309,148 @@ export default async function MatchDetailPage({
 
   const sortedGoals = sortGoalsForTimeline(goalRows);
 
+  const historicalBoundaryFilter = or(
+    lt(matches.matchDate, match.matchDate),
+    and(eq(matches.matchDate, match.matchDate), lt(matches.id, match.id))
+  );
+
+  let previousSeasonGoals: Array<{
+    id: number;
+    matchId: number;
+    teamSide: TeamSide;
+    isOwnGoal: boolean;
+    scorerPlayerId: number;
+    assistPlayerId: number | null;
+    minute: number | null;
+    createdAt: Date | null;
+  }> = [];
+
+  try {
+    previousSeasonGoals = await db
+      .select({
+        id: goalEvents.id,
+        matchId: goalEvents.matchId,
+        teamSide: goalEvents.teamSide,
+        isOwnGoal: goalEvents.isOwnGoal,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(and(eq(matches.seasonId, match.seasonId), historicalBoundaryFilter));
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
+    const legacyPreviousSeasonGoals = await db
+      .select({
+        id: goalEvents.id,
+        matchId: goalEvents.matchId,
+        teamSide: goalEvents.teamSide,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(and(eq(matches.seasonId, match.seasonId), historicalBoundaryFilter));
+
+    previousSeasonGoals = legacyPreviousSeasonGoals.map((goal) => ({
+      ...goal,
+      isOwnGoal: false,
+    }));
+  }
+
+  let previousAssistCombosAllTime = new Map<string, number>();
+
+  try {
+    const previousAssistRows = await db
+      .select({
+        isOwnGoal: goalEvents.isOwnGoal,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(historicalBoundaryFilter);
+
+    previousAssistCombosAllTime = previousAssistRows.reduce((acc, goal) => {
+      if (goal.isOwnGoal || goal.assistPlayerId === null) {
+        return acc;
+      }
+
+      incrementComboCounter(acc, goal.assistPlayerId, goal.scorerPlayerId);
+      return acc;
+    }, new Map<string, number>());
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
+    const previousAssistRowsLegacy = await db
+      .select({
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(historicalBoundaryFilter);
+
+    previousAssistCombosAllTime = previousAssistRowsLegacy.reduce((acc, goal) => {
+      if (goal.assistPlayerId === null) {
+        return acc;
+      }
+
+      incrementComboCounter(acc, goal.assistPlayerId, goal.scorerPlayerId);
+      return acc;
+    }, new Map<string, number>());
+  }
+
+  const previousSeasonEarlyGoalsCount = previousSeasonGoals.filter(
+    (goal) => !goal.isOwnGoal && isEarlyGoalMinute(goal.minute)
+  ).length;
+  const previousSeasonLateGoalsCount = previousSeasonGoals.filter(
+    (goal) => !goal.isOwnGoal && isLateGoalMinute(goal.minute)
+  ).length;
+
+  const previousSeasonFirstGoalsByScorer = new Map<number, number>();
+  const goalsByPreviousSeasonMatchId = new Map<number, GoalEventView[]>();
+
+  for (const goal of previousSeasonGoals) {
+    const existing = goalsByPreviousSeasonMatchId.get(goal.matchId) ?? [];
+    existing.push(goal);
+    goalsByPreviousSeasonMatchId.set(goal.matchId, existing);
+  }
+
+  for (const seasonMatchGoals of goalsByPreviousSeasonMatchId.values()) {
+    const sortedSeasonMatchGoals = sortGoalsForTimeline(seasonMatchGoals);
+
+    let team1Score = 0;
+    let team2Score = 0;
+
+    for (const goal of sortedSeasonMatchGoals) {
+      const wasNilNil = team1Score === 0 && team2Score === 0;
+
+      if (goal.teamSide === "team_1") {
+        team1Score += 1;
+      } else {
+        team2Score += 1;
+      }
+
+      if (goal.isOwnGoal) {
+        continue;
+      }
+
+      if (wasNilNil) {
+        incrementMapCounter(previousSeasonFirstGoalsByScorer, goal.scorerPlayerId);
+      }
+    }
+  }
+
   const team1Participants = participantRows.filter((row) => row.teamSide === "team_1");
   const team2Participants = participantRows.filter((row) => row.teamSide === "team_2");
 
@@ -367,19 +548,79 @@ export default async function MatchDetailPage({
 
   const timelineState = sortedGoals.reduce(
     (acc, goal) => {
+      const wasNilNil = acc.team1 === 0 && acc.team2 === 0;
       const team1 = acc.team1 + (goal.teamSide === "team_1" ? 1 : 0);
       const team2 = acc.team2 + (goal.teamSide === "team_2" ? 1 : 0);
+      const statisticNotes: string[] = [];
+      const firstGoalsByScorer = new Map(acc.firstGoalsByScorer);
+      const assistCombosAllTime = new Map(acc.assistCombosAllTime);
+      let seasonEarlyGoals = acc.seasonEarlyGoals;
+      let seasonLateGoals = acc.seasonLateGoals;
+
+      if (!goal.isOwnGoal) {
+        if (isEarlyGoalMinute(goal.minute)) {
+          seasonEarlyGoals += 1;
+          if (seasonEarlyGoals % 10 === 0) {
+            statisticNotes.push(
+              `📊 Bereits das ${seasonEarlyGoals}. Tor in den ersten 15 Minuten in dieser Saison.`
+            );
+          }
+        }
+
+        if (isLateGoalMinute(goal.minute)) {
+          seasonLateGoals += 1;
+          if (seasonLateGoals % 10 === 0) {
+            statisticNotes.push(
+              `📊 Bereits das ${seasonLateGoals}. Tor in den letzten 15 Minuten in dieser Saison.`
+            );
+          }
+        }
+
+        if (wasNilNil) {
+          const firstGoalCount = incrementMapCounter(firstGoalsByScorer, goal.scorerPlayerId);
+          if (firstGoalCount >= 5) {
+            const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+            statisticNotes.push(
+              `🎯 Das ist ${getGermanPossessiveName(scorerName)} ${firstGoalCount}. 1:0 in dieser Saison.`
+            );
+          }
+        }
+
+        if (goal.assistPlayerId !== null) {
+          const comboCount = incrementComboCounter(
+            assistCombosAllTime,
+            goal.assistPlayerId,
+            goal.scorerPlayerId
+          );
+
+          if (comboCount >= 5) {
+            const assistName = playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`;
+            const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
+            statisticNotes.push(
+              `🅰️ ${assistName} hat ${scorerName} bereits zum ${comboCount}. Mal ein Tor aufgelegt.`
+            );
+          }
+        }
+      }
 
       return {
         team1,
         team2,
-        goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}` }],
+        seasonEarlyGoals,
+        seasonLateGoals,
+        firstGoalsByScorer,
+        assistCombosAllTime,
+        goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}`, statisticNotes }],
       };
     },
     {
       team1: 0,
       team2: 0,
-      goals: [] as Array<GoalEventView & { scoreAfterGoal: string }>,
+      seasonEarlyGoals: previousSeasonEarlyGoalsCount,
+      seasonLateGoals: previousSeasonLateGoalsCount,
+      firstGoalsByScorer: new Map(previousSeasonFirstGoalsByScorer),
+      assistCombosAllTime: new Map(previousAssistCombosAllTime),
+      goals: [] as TimelineGoalView[],
     }
   );
 
@@ -624,6 +865,14 @@ export default async function MatchDetailPage({
                         )}
                         {goal.goalType ? <span className="text-zinc-500"> · {goal.goalType}</span> : null}
                       </p>
+
+                      {goal.statisticNotes.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-xs text-zinc-700">
+                          {goal.statisticNotes.map((note, index) => (
+                            <li key={`${goal.id}-stat-${index}`}>{note}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </article>
                   </li>
                 );
