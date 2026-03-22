@@ -76,7 +76,9 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     if (validSeasonId) {
       filters.push(eq(matches.seasonId, validSeasonId));
 
-      return db
+      const whereClause = filters.length > 0 ? and(...filters) : undefined;
+
+      const baseQuery = db
         .select({
           playerId: players.id,
           playerName: players.name,
@@ -84,21 +86,29 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
         })
         .from(goalEvents)
         .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(and(...filters))
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id));
+
+      const filteredQuery = whereClause ? baseQuery.where(whereClause) : baseQuery;
+
+      return filteredQuery
         .groupBy(players.id, players.name)
         .orderBy(desc(goalsCount), asc(players.name));
     }
 
-    return db
+    const whereClause = filters.length > 0 ? and(...filters) : undefined;
+
+    const baseQuery = db
       .select({
         playerId: players.id,
         playerName: players.name,
         goals: goalsCount.as("goals"),
       })
       .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-      .where(and(...filters))
+      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id));
+
+    const filteredQuery = whereClause ? baseQuery.where(whereClause) : baseQuery;
+
+    return filteredQuery
       .groupBy(players.id, players.name)
       .orderBy(desc(goalsCount), asc(players.name));
   };
