@@ -63,6 +63,36 @@ function toIsoDateInBerlin(date: Date) {
   }).format(date);
 }
 
+function getBerlinWeekdayIndex(date: Date) {
+  const weekdayShort = new Intl.DateTimeFormat("en-US", {
+    timeZone: HOLM_SEPPENSEN.timezone,
+    weekday: "short",
+  }).format(date);
+
+  const weekdayMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return weekdayMap[weekdayShort] ?? 0;
+}
+
+export function getUpcomingMondayIsoInBerlin() {
+  const today = new Date();
+  const weekdayIndex = getBerlinWeekdayIndex(today);
+  const daysUntilMonday = (1 - weekdayIndex + 7) % 7;
+
+  const upcomingMonday = new Date(today);
+  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
+
+  return toIsoDateInBerlin(upcomingMonday);
+}
+
 function chooseWeatherEndpoint(matchDateIso: string) {
   const todayIso = toIsoDateInBerlin(new Date());
   const baseUrl =

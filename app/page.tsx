@@ -4,6 +4,7 @@ import { asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
 import { buildMatchStory } from "@/src/lib/matchStory";
+import { fetchWeatherForMatchDate, getUpcomingMondayIsoInBerlin } from "@/src/lib/weather";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
 
 type MatchBrief = {
@@ -22,6 +23,13 @@ function formatDate(date: Date) {
   return new Intl.DateTimeFormat("de-DE", {
     dateStyle: "medium",
   }).format(date);
+}
+
+function formatIsoDate(isoDate: string) {
+  return new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "medium",
+    timeZone: "Europe/Berlin",
+  }).format(new Date(`${isoDate}T00:00:00`));
 }
 
 export default async function Home() {
@@ -229,6 +237,24 @@ export default async function Home() {
       })
     : null;
 
+  const upcomingMondayIso = getUpcomingMondayIsoInBerlin();
+
+  const nextMatchWeather = await fetchWeatherForMatchDate(upcomingMondayIso).catch(() => ({
+    conditionLabel: "Wetterdaten nicht verfügbar",
+    temperatureC: null,
+    feelsLikeC: null,
+    precipMm: null,
+    windKmh: null,
+    humidityPct: null,
+  }));
+
+  const nextMatchWeatherPresentation = getWeatherPresentation({
+    conditionLabel: nextMatchWeather.conditionLabel,
+    temperatureC: nextMatchWeather.temperatureC,
+    precipMm: nextMatchWeather.precipMm,
+    windKmh: nextMatchWeather.windKmh,
+  });
+
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
   const mvpCount = sql<number>`count(${matches.id})`;
@@ -402,6 +428,32 @@ export default async function Home() {
           ) : (
             <p className="text-zinc-500">Sobald Spiele vorhanden sind, erscheinen hier die Storylines.</p>
           )}
+        </section>
+
+        <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold sm:text-xl">Ausblick aufs nächste Montagsspiel</h2>
+            <span className="rounded-full border border-zinc-300 px-2.5 py-1 text-[11px] uppercase tracking-wider text-zinc-600">
+              Prognose
+            </span>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-zinc-300 bg-stone-50 p-4">
+            <p className="text-sm text-zinc-600">{formatIsoDate(upcomingMondayIso)} · Holm-Seppensen</p>
+            <p className="mt-2 text-lg font-semibold text-zinc-900 sm:text-xl">
+              {nextMatchWeatherPresentation.icon} {nextMatchWeatherPresentation.label}
+            </p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Temperatur: {nextMatchWeather.temperatureC !== null ? `${nextMatchWeather.temperatureC.toFixed(1)} °C` : "—"}
+              {" · "}
+              Gefühlte Temp.: {nextMatchWeather.feelsLikeC !== null ? `${nextMatchWeather.feelsLikeC.toFixed(1)} °C` : "—"}
+              {" · "}
+              Niederschlag: {nextMatchWeather.precipMm !== null ? `${nextMatchWeather.precipMm.toFixed(1)} mm` : "—"}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Hinweis: Prognosen können sich bis zum Spieltag noch ändern.
+            </p>
+          </div>
         </section>
 
         <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
