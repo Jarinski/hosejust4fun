@@ -4,11 +4,26 @@ import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { recalculateMatchMvp } from "@/src/lib/mvp";
-import { GoalsForm } from "./GoalsForm";
+import { GoalRowState, GoalType, GoalsForm } from "./GoalsForm";
 
 type TeamSide = "team_1" | "team_2";
 
 const ALLOWED_GOAL_TYPES = new Set(["normal", "solo", "corner", "rebound", "longshot"]);
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybePgError = error as { code?: string; message?: string };
+
+  // PostgreSQL: undefined_column
+  if (maybePgError.code === "42703") {
+    return true;
+  }
+
+  return typeof maybePgError.message === "string" && maybePgError.message.includes(columnName);
+}
 
 export default async function MatchGoalsPage({
   params,
@@ -72,6 +87,95 @@ export default async function MatchGoalsPage({
   const team2Players = participantRows
     .filter((row) => row.teamSide === "team_2")
     .map((row) => ({ id: row.playerId, name: row.playerName }));
+
+  let ownGoalColumnAvailable = true;
+  let existingGoalRows: Array<{
+    id: number;
+    teamSide: TeamSide;
+    isOwnGoal: boolean;
+    scorerPlayerId: number;
+    assistPlayerId: number | null;
+    minute: number | null;
+    goalType: string | null;
+    createdAt: Date | null;
+  }> = [];
+
+  try {
+    existingGoalRows = await db
+      .select({
+        id: goalEvents.id,
+        teamSide: goalEvents.teamSide,
+        isOwnGoal: goalEvents.isOwnGoal,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .where(eq(goalEvents.matchId, matchId));
+  } catch (error) {
+    if (!isMissingColumnError(error, "is_own_goal")) {
+      throw error;
+    }
+
+    ownGoalColumnAvailable = false;
+
+    const legacyGoalRows = await db
+      .select({
+        id: goalEvents.id,
+        teamSide: goalEvents.teamSide,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+        assistPlayerId: goalEvents.assistPlayerId,
+        minute: goalEvents.minute,
+        goalType: goalEvents.goalType,
+        createdAt: goalEvents.createdAt,
+      })
+      .from(goalEvents)
+      .where(eq(goalEvents.matchId, matchId));
+
+    existingGoalRows = legacyGoalRows.map((goal) => ({
+      ...goal,
+      isOwnGoal: false,
+    }));
+  }
+
+  const initialRows: GoalRowState[] = [...existingGoalRows]
+    .sort((a, b) => {
+      if (a.minute !== null && b.minute !== null && a.minute !== b.minute) {
+        return a.minute - b.minute;
+      }
+
+      if (a.minute !== null && b.minute === null) {
+        return -1;
+      }
+
+      if (a.minute === null && b.minute !== null) {
+        return 1;
+      }
+
+      const aCreatedAt = a.createdAt ? a.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+      const bCreatedAt = b.createdAt ? b.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+
+      if (aCreatedAt !== bCreatedAt) {
+        return aCreatedAt - bCreatedAt;
+      }
+
+      return a.id - b.id;
+    })
+    .map((goal) => ({
+      teamSide: goal.teamSide,
+      isOwnGoal: goal.isOwnGoal,
+      scorerPlayerId: String(goal.scorerPlayerId),
+      assistPlayerId: !goal.isOwnGoal && goal.assistPlayerId !== null ? String(goal.assistPlayerId) : "",
+      minute: goal.minute !== null ? String(goal.minute) : "",
+      goalType:
+        goal.goalType && ALLOWED_GOAL_TYPES.has(goal.goalType)
+          ? (goal.goalType as GoalType)
+          : "",
+    }));
+
+  const rowCount = Math.max(20, initialRows.length);
 
   async function saveGoals(formData: FormData) {
     "use server";
@@ -207,11 +311,19 @@ export default async function MatchGoalsPage({
     const team1Score = rowsToInsert.filter((row) => row.teamSide === "team_1").length;
     const team2Score = rowsToInsert.filter((row) => row.teamSide === "team_2").length;
 
+    if (!ownGoalColumnAvailable && rowsToInsert.some((row) => row.isOwnGoal)) {
+      redirect(`/admin/matches/${targetMatchId}/goals?error=validation`);
+    }
+
     await db.transaction(async (tx) => {
       await tx.delete(goalEvents).where(eq(goalEvents.matchId, targetMatchId));
 
       if (rowsToInsert.length > 0) {
-        await tx.insert(goalEvents).values(rowsToInsert);
+        const valuesForInsert = ownGoalColumnAvailable
+          ? rowsToInsert
+          : rowsToInsert.map(({ isOwnGoal: _isOwnGoal, ...rest }) => rest);
+
+        await tx.insert(goalEvents).values(valuesForInsert);
       }
 
       await tx
@@ -223,7 +335,11 @@ export default async function MatchGoalsPage({
         .where(eq(matches.id, targetMatchId));
     });
 
-    await recalculateMatchMvp(targetMatchId);
+    try {
+      await recalculateMatchMvp(targetMatchId);
+    } catch {
+      // MVP-Neuberechnung soll das Speichern von Toren nicht blockieren.
+    }
 
     redirect(`/admin/matches/${targetMatchId}/goals?success=1`);
   }
@@ -245,6 +361,12 @@ export default async function MatchGoalsPage({
         {queryParams.error ? (
           <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-700">
             Tore konnten nicht gespeichert werden.
+          </p>
+        ) : null}
+
+        {!ownGoalColumnAvailable ? (
+          <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-700">
+            Hinweis: Eigentore sind in dieser Datenbank noch nicht verfügbar (Migration fehlt).
           </p>
         ) : null}
 
@@ -274,6 +396,8 @@ export default async function MatchGoalsPage({
           matchId={matchId}
           team1Players={team1Players}
           team2Players={team2Players}
+          initialRows={initialRows}
+          rowCount={rowCount}
         />
       </section>
     </main>

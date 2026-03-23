@@ -125,6 +125,13 @@ export default async function MatchesPage() {
     }
   }
 
+  const scoreByMatchId = new Map<number, { team1Score: number; team2Score: number }>();
+  for (const [matchId, goals] of goalsByMatchId.entries()) {
+    const team1Score = goals.filter((goal) => goal.teamSide === "team_1").length;
+    const team2Score = goals.filter((goal) => goal.teamSide === "team_2").length;
+    scoreByMatchId.set(matchId, { team1Score, team2Score });
+  }
+
   const weatherByMatchId = new Map<number, (typeof allWeather)[number]>();
   for (const weather of allWeather) {
     weatherByMatchId.set(weather.matchId, weather);
@@ -153,12 +160,16 @@ export default async function MatchesPage() {
   }
 
   allMatches.forEach((match, index) => {
+    const currentScore = scoreByMatchId.get(match.id);
+    const currentTeam1Score = currentScore ? currentScore.team1Score : match.team1Score;
+    const currentTeam2Score = currentScore ? currentScore.team2Score : match.team2Score;
+
     const story = buildMatchStory({
       match: {
         team1Name: match.team1Name,
         team2Name: match.team2Name,
-        team1Goals: match.team1Score,
-        team2Goals: match.team2Score,
+        team1Goals: currentTeam1Score,
+        team2Goals: currentTeam2Score,
         mvpPlayerId: match.mvpPlayerId,
         mvpName: match.mvpName,
       },
@@ -171,10 +182,15 @@ export default async function MatchesPage() {
           }
         : null,
       previousMatches: allMatches.slice(index + 1).map((previousMatch) => ({
+        ...(() => {
+          const previousScore = scoreByMatchId.get(previousMatch.id);
+          return {
+            team1Goals: previousScore ? previousScore.team1Score : previousMatch.team1Score,
+            team2Goals: previousScore ? previousScore.team2Score : previousMatch.team2Score,
+          };
+        })(),
         team1Name: previousMatch.team1Name,
         team2Name: previousMatch.team2Name,
-        team1Goals: previousMatch.team1Score,
-        team2Goals: previousMatch.team2Score,
         scorerPlayerIds: scorerIdsByMatchId.get(previousMatch.id) ?? [],
         assistPlayerIds: assistIdsByMatchId.get(previousMatch.id) ?? [],
       })),
@@ -217,6 +233,9 @@ export default async function MatchesPage() {
                   <tr key={match.id} className="border-t border-zinc-300">
                     {(() => {
                       const weather = weatherByMatchId.get(match.id);
+                      const syncedScore = scoreByMatchId.get(match.id);
+                      const displayTeam1Score = syncedScore ? syncedScore.team1Score : match.team1Score;
+                      const displayTeam2Score = syncedScore ? syncedScore.team2Score : match.team2Score;
 
                       return (
                         <>
@@ -227,7 +246,7 @@ export default async function MatchesPage() {
                         {match.team1Name} vs {match.team2Name}
                       </p>
                       <p className="text-xs text-zinc-500">
-                        Ergebnis: {match.team1Score}:{match.team2Score}
+                        Ergebnis: {displayTeam1Score}:{displayTeam2Score}
                       </p>
                       <p className="text-xs text-zinc-500">MVP: {match.mvpName ?? "—"}</p>
                       {(storiesByMatchId.get(match.id) ?? []).map((line, index) => (

@@ -198,6 +198,7 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
   const equalizerCounter = new Map<number, CounterEntry>();
   const earlyGoalCounter = new Map<number, CounterEntry>();
   const lateGoalCounter = new Map<number, CounterEntry>();
+  const winningGoalCounter = new Map<number, CounterEntry>();
 
   let currentMatchId: number | null = null;
   let team1Score = 0;
@@ -239,10 +240,59 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
     }
   }
 
+  const goalsByMatch = new Map<number, GoalRow[]>();
+  for (const goal of goals) {
+    const current = goalsByMatch.get(goal.matchId) ?? [];
+    current.push(goal);
+    goalsByMatch.set(goal.matchId, current);
+  }
+
+  for (const [, matchGoals] of goalsByMatch) {
+    let finalTeam1 = 0;
+    let finalTeam2 = 0;
+
+    for (const goal of matchGoals) {
+      if (goal.teamSide === "team_1") {
+        finalTeam1 += 1;
+      } else {
+        finalTeam2 += 1;
+      }
+    }
+
+    if (finalTeam1 === finalTeam2) {
+      continue;
+    }
+
+    const winnerSide: "team_1" | "team_2" = finalTeam1 > finalTeam2 ? "team_1" : "team_2";
+    const loserFinalGoals = winnerSide === "team_1" ? finalTeam2 : finalTeam1;
+    const decisiveGoalNumber = loserFinalGoals + 1;
+
+    let winnerRunningGoals = 0;
+    let decisiveGoal: GoalRow | null = null;
+
+    for (const goal of matchGoals) {
+      if (goal.teamSide !== winnerSide) {
+        continue;
+      }
+
+      winnerRunningGoals += 1;
+
+      if (winnerRunningGoals === decisiveGoalNumber) {
+        decisiveGoal = goal;
+        break;
+      }
+    }
+
+    if (decisiveGoal && !decisiveGoal.isOwnGoal) {
+      incrementCounter(winningGoalCounter, decisiveGoal.scorerPlayerId, decisiveGoal.scorerName);
+    }
+  }
+
   const firstGoals = sortCounterEntries(Array.from(firstGoalCounter.values()));
   const equalizers = sortCounterEntries(Array.from(equalizerCounter.values()));
   const earlyGoals = sortCounterEntries(Array.from(earlyGoalCounter.values()));
   const lateGoals = sortCounterEntries(Array.from(lateGoalCounter.values()));
+  const winningGoals = sortCounterEntries(Array.from(winningGoalCounter.values()));
 
   return (
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
@@ -301,6 +351,15 @@ export default async function GoalMomentsPage({ searchParams }: GoalMomentsPageP
               title="Wer erzielt am häufigsten den Ausgleich?"
               emptyLabel="Kein Ausgleichstreffer erfasst."
               rows={equalizers}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              buildSortHref={buildSortHref}
+            />
+
+            <StatsTable
+              title="Wer schießt am häufigsten das Siegtor?"
+              emptyLabel="Kein Siegtor-Torschütze erfasst."
+              rows={winningGoals}
               sortKey={sortKey}
               sortDir={sortDir}
               buildSortHref={buildSortHref}

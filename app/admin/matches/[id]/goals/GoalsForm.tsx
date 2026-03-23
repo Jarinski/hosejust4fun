@@ -3,46 +3,59 @@
 import { useMemo, useState } from "react";
 
 type TeamSide = "team_1" | "team_2";
+export type GoalType = "" | "normal" | "solo" | "corner" | "rebound" | "longshot";
 
 type PlayerOption = {
   id: number;
   name: string;
 };
 
-type GoalRowState = {
+export type GoalRowState = {
   teamSide: "" | TeamSide;
   isOwnGoal: boolean;
   scorerPlayerId: string;
   assistPlayerId: string;
   minute: string;
-  goalType: "" | "normal" | "solo" | "corner" | "rebound" | "longshot";
+  goalType: GoalType;
 };
 
 const GOAL_TYPES = ["normal", "solo", "corner", "rebound", "longshot"] as const;
+
+function createEmptyGoalRow(): GoalRowState {
+  return {
+    teamSide: "",
+    isOwnGoal: false,
+    scorerPlayerId: "",
+    assistPlayerId: "",
+    minute: "",
+    goalType: "",
+  };
+}
 
 export function GoalsForm({
   action,
   matchId,
   team1Players,
   team2Players,
+  initialRows,
   rowCount = 20,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   matchId: number;
   team1Players: PlayerOption[];
   team2Players: PlayerOption[];
+  initialRows?: GoalRowState[];
   rowCount?: number;
 }) {
-  const [rows, setRows] = useState<GoalRowState[]>(() =>
-    Array.from({ length: rowCount }, () => ({
-      teamSide: "",
-      isOwnGoal: false,
-      scorerPlayerId: "",
-      assistPlayerId: "",
-      minute: "",
-      goalType: "",
-    }))
-  );
+  const [rows, setRows] = useState<GoalRowState[]>(() => {
+    const emptyRows = Array.from({ length: rowCount }, () => createEmptyGoalRow());
+
+    if (!initialRows || initialRows.length === 0) {
+      return emptyRows;
+    }
+
+    return emptyRows.map((emptyRow, index) => initialRows[index] ?? emptyRow);
+  });
 
   const playersByTeam = useMemo(
     () => ({
