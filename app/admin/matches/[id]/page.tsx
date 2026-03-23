@@ -540,6 +540,24 @@ export default async function MatchDetailPage({
     }, new Map<number, number>());
   }
 
+  // Für Race-Notizen brauchen wir auch Namen von Spielern,
+  // die in früheren Matches vorkommen, aber heute nicht auf dem Feld standen.
+  const raceRelevantPlayerIds = Array.from(
+    new Set([...previousGoalsByPlayerModern.keys(), ...previousAssistsByPlayerModern.keys()])
+  );
+  const missingRacePlayerIds = raceRelevantPlayerIds.filter((playerId) => !playerNameById.has(playerId));
+
+  if (missingRacePlayerIds.length > 0) {
+    const racePlayers = await db
+      .select({ id: players.id, name: players.name })
+      .from(players)
+      .where(inArray(players.id, missingRacePlayerIds));
+
+    for (const player of racePlayers) {
+      playerNameById.set(player.id, player.name);
+    }
+  }
+
   const previousSeasonEarlyGoalsCount = previousSeasonGoals.filter(
     (goal) => !goal.isOwnGoal && isEarlyGoalMinute(goal.minute)
   ).length;

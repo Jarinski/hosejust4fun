@@ -133,7 +133,7 @@ export default async function Home() {
     allMatchesForSeries = allBaseMatches.map((match) => ({ ...match, mvpName: null }));
   }
 
-  const latestMatch = recentMatches[0] ?? null;
+  let latestMatch = recentMatches[0] ?? null;
   let ownGoalColumnAvailable = true;
 
   let latestMatchGoals: LatestMatchGoal[] = [];
@@ -221,6 +221,7 @@ export default async function Home() {
 
     allMatchesForSeries = allMatchesForSeries.map(applySyncedScore);
     recentMatches = recentMatches.map(applySyncedScore);
+    latestMatch = recentMatches[0] ?? null;
   }
 
   const previousMatchesForLatest = allMatchesForSeries.slice(1);
