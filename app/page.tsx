@@ -188,6 +188,41 @@ export default async function Home() {
         .catch(() => null)
     : null;
 
+  const matchIdsForScoreSync = Array.from(new Set(allMatchesForSeries.map((match) => match.id)));
+
+  if (matchIdsForScoreSync.length > 0) {
+    const goalScoreRows = await db
+      .select({
+        matchId: goalEvents.matchId,
+        team1Score: sql<number>`coalesce(sum(case when ${goalEvents.teamSide} = 'team_1' then 1 else 0 end), 0)::int`,
+        team2Score: sql<number>`coalesce(sum(case when ${goalEvents.teamSide} = 'team_2' then 1 else 0 end), 0)::int`,
+      })
+      .from(goalEvents)
+      .where(inArray(goalEvents.matchId, matchIdsForScoreSync))
+      .groupBy(goalEvents.matchId)
+      .catch(() => []);
+
+    const scoreByMatchId = new Map(
+      goalScoreRows.map((row) => [row.matchId, { team1Score: row.team1Score, team2Score: row.team2Score }])
+    );
+
+    const applySyncedScore = (match: MatchBrief): MatchBrief => {
+      const syncedScore = scoreByMatchId.get(match.id);
+      if (!syncedScore) {
+        return match;
+      }
+
+      return {
+        ...match,
+        team1Score: syncedScore.team1Score,
+        team2Score: syncedScore.team2Score,
+      };
+    };
+
+    allMatchesForSeries = allMatchesForSeries.map(applySyncedScore);
+    recentMatches = recentMatches.map(applySyncedScore);
+  }
+
   const previousMatchesForLatest = allMatchesForSeries.slice(1);
   const previousMatchIdsForLatest = previousMatchesForLatest.map((match) => match.id);
   const previousGoalsForLatest =
