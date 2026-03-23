@@ -16,7 +16,6 @@ const publicNavItems = [
 const adminNavItems = [
   { href: "/admin/matches", label: "Matches" },
   { href: "/admin/players", label: "Spieler" },
-  { href: "/admin/stats", label: "Statistiken" },
 ] as const;
 
 export function TopNav({ isAdmin }: TopNavProps) {

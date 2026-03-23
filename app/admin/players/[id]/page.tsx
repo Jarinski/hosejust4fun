@@ -178,7 +178,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
         <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
           <p className="mb-4 text-sm text-zinc-600">
-            <Link href="/admin/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
+            <Link href="/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
           </p>
           <h1 className="mb-2 text-xl font-semibold">Spieler</h1>
           <p className="text-zinc-500">Ungültige Spieler-ID.</p>
@@ -223,7 +223,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
         <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
           <p className="mb-4 text-sm text-zinc-600">
-            <Link href="/admin/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
+            <Link href="/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
           </p>
           <h1 className="mb-2 text-xl font-semibold">Spieler nicht gefunden</h1>
           <p className="text-zinc-500">Zu dieser ID gibt es keinen Spieler.</p>
@@ -654,7 +654,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-300 bg-white p-6">
         <p className="mb-4 text-sm text-zinc-600">
-          <Link href="/admin/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
+          <Link href="/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
         </p>
         <h1 className="mb-4 text-2xl font-semibold">{player.name}</h1>
 

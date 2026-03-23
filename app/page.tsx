@@ -803,7 +803,7 @@ export default async function Home() {
               Matches verwalten
             </Link>
             <Link
-              href="/admin/stats"
+              href="/stats"
               className="rounded-lg border border-zinc-300 bg-stone-50 px-3.5 py-2 text-zinc-900 transition hover:border-zinc-500"
             >
               Mehr Statistiken

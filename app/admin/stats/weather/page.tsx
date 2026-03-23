@@ -371,7 +371,7 @@ export default async function WeatherStatsPage() {
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-6xl rounded-2xl border border-zinc-300 bg-white p-6">
         <p className="mb-4 text-sm text-zinc-600">
-          <Link href="/admin/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
+          <Link href="/stats" className="hover:text-zinc-900">← Zurück zu Statistiken</Link>
         </p>
 
         <h1 className="text-2xl font-semibold">Wetter-Statistik</h1>
