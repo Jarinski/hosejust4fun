@@ -274,16 +274,43 @@ export default async function Home() {
 
   const upcomingMatchdayId = upcomingMatchdayRows[0]?.id ?? null;
 
-  const upcomingSelectedPlayers =
-    upcomingMatchdayId !== null
-      ? await db
-          .select({ id: players.id, name: players.name })
-          .from(matchdayParticipants)
-          .innerJoin(players, eq(matchdayParticipants.playerId, players.id))
-          .where(eq(matchdayParticipants.matchdayId, upcomingMatchdayId))
-          .orderBy(asc(players.name))
-          .catch(() => [])
-      : [];
+  let upcomingPlayerStatusRows: Array<{ id: number; name: string; isCanceled: boolean }> = [];
+  if (upcomingMatchdayId !== null) {
+    try {
+      upcomingPlayerStatusRows = await db
+        .select({
+          id: players.id,
+          name: players.name,
+          isCanceled: matchdayParticipants.isCanceled,
+        })
+        .from(matchdayParticipants)
+        .innerJoin(players, eq(matchdayParticipants.playerId, players.id))
+        .where(eq(matchdayParticipants.matchdayId, upcomingMatchdayId))
+        .orderBy(asc(players.name));
+    } catch {
+      const legacyRows = await db
+        .select({ id: players.id, name: players.name })
+        .from(matchdayParticipants)
+        .innerJoin(players, eq(matchdayParticipants.playerId, players.id))
+        .where(eq(matchdayParticipants.matchdayId, upcomingMatchdayId))
+        .orderBy(asc(players.name))
+        .catch(() => []);
+
+      upcomingPlayerStatusRows = legacyRows.map((row) => ({
+        id: row.id,
+        name: String(row.name),
+        isCanceled: false,
+      }));
+    }
+  }
+
+  const upcomingSelectedPlayers = upcomingPlayerStatusRows
+    .filter((player) => !player.isCanceled)
+    .map((player) => ({ id: player.id, name: String(player.name) }));
+
+  const upcomingCanceledPlayers = upcomingPlayerStatusRows
+    .filter((player) => player.isCanceled)
+    .map((player) => ({ id: player.id, name: String(player.name) }));
 
   const selectedPlayerIdsSet = new Set(upcomingSelectedPlayers.map((player) => player.id));
 
@@ -339,7 +366,9 @@ export default async function Home() {
     .filter((entry) => entry.missedMatches >= 2)
     .sort((a, b) => b.missedMatches - a.missedMatches);
 
-  const playerNameById = new Map(upcomingSelectedPlayers.map((player) => [player.id, player.name]));
+  const playerNameById = new Map(
+    [...upcomingSelectedPlayers, ...upcomingCanceledPlayers].map((player) => [player.id, player.name])
+  );
 
   const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number }>();
 
@@ -400,12 +429,77 @@ export default async function Home() {
       return a.playerAName.localeCompare(b.playerAName, "de");
     })[0] ?? null;
 
+  const bestOverallDuo = Array.from(duoStatsByKey.entries())
+    .map(([key, stats]) => {
+      const [aRaw, bRaw] = key.split("-");
+      const a = Number(aRaw);
+      const b = Number(bRaw);
+      return { a, b, ...stats };
+    })
+    .filter((duo) => duo.gamesTogether >= 3)
+    .map((duo) => ({
+      playerAName: String(playerNameById.get(duo.a) ?? `Spieler #${duo.a}`),
+      playerBName: String(playerNameById.get(duo.b) ?? `Spieler #${duo.b}`),
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+    }))
+    .sort((a, b) => {
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })[0] ?? null;
+
+  const bestAvailableDuo = strongestDuo;
+
+  const participantByMatchAndPlayer = new Map<string, "team_1" | "team_2">();
+  for (const participant of historicalParticipantsForForecast) {
+    participantByMatchAndPlayer.set(
+      `${participant.matchId}-${participant.playerId}`,
+      participant.teamSide
+    );
+  }
+
+  const canceledStreakPlayer = upcomingCanceledPlayers
+    .map((player) => {
+      let streak = 0;
+
+      for (const match of historicalMatchesForForecast) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) {
+          continue;
+        }
+
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+
+        if (!didWin) {
+          break;
+        }
+
+        streak += 1;
+      }
+
+      return {
+        name: player.name,
+        streak,
+      };
+    })
+    .filter((entry) => entry.streak >= 3)
+    .sort((a, b) => b.streak - a.streak)[0] ?? null;
+
   const nextMatchForecastLines = buildMatchdayForecast({
     selectedPlayers: upcomingSelectedPlayers,
+    canceledPlayers: upcomingCanceledPlayers,
     weather: nextMatchWeather,
     strongestDuo,
+    bestOverallDuo,
+    bestAvailableDuo,
     returningPlayers,
     weatherPerformance: null,
+    canceledStreakPlayer,
   });
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;

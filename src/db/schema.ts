@@ -75,6 +75,7 @@ export const matchdayParticipants = pgTable("matchday_participants", {
   playerId: integer("player_id")
     .notNull()
     .references(() => players.id),
+  isCanceled: boolean("is_canceled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

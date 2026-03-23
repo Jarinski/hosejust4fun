@@ -38,8 +38,14 @@ async function ensureMatchdayTables() {
       "id" serial PRIMARY KEY,
       "matchday_id" integer NOT NULL REFERENCES "matchdays"("id"),
       "player_id" integer NOT NULL REFERENCES "players"("id"),
+      "is_canceled" boolean NOT NULL DEFAULT false,
       "created_at" timestamp DEFAULT now()
     )
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE "matchday_participants"
+    ADD COLUMN IF NOT EXISTS "is_canceled" boolean NOT NULL DEFAULT false
   `);
 }
 
@@ -142,17 +148,45 @@ export default async function MatchdayPage({
 
   const matchdayId = await loadExistingMatchdayId(upcomingMondayIso);
 
-  const selectedPlayerIds =
+  const matchdayParticipantRows =
     matchdayId !== null
       ? await db
-          .select({ playerId: matchdayParticipants.playerId })
+          .select({
+            playerId: matchdayParticipants.playerId,
+            isCanceled: matchdayParticipants.isCanceled,
+          })
           .from(matchdayParticipants)
           .where(eq(matchdayParticipants.matchdayId, matchdayId))
-          .then((rows) => rows.map((row) => row.playerId))
       : [];
 
-  const selectedSet = new Set(selectedPlayerIds);
-  const selectedPlayers = activePlayers.filter((player) => selectedSet.has(player.id));
+  const confirmedSet = new Set(
+    matchdayParticipantRows
+      .filter((row) => !row.isCanceled)
+      .map((row) => row.playerId)
+  );
+  const canceledSet = new Set(
+    matchdayParticipantRows
+      .filter((row) => row.isCanceled)
+      .map((row) => row.playerId)
+  );
+
+  const selectedPlayers = activePlayers.filter((player) => confirmedSet.has(player.id));
+  const canceledPlayers = activePlayers.filter((player) => canceledSet.has(player.id));
+
+  const statusByPlayerId = new Map<number, "none" | "confirmed" | "canceled">();
+  for (const player of activePlayers) {
+    if (confirmedSet.has(player.id)) {
+      statusByPlayerId.set(player.id, "confirmed");
+      continue;
+    }
+
+    if (canceledSet.has(player.id)) {
+      statusByPlayerId.set(player.id, "canceled");
+      continue;
+    }
+
+    statusByPlayerId.set(player.id, "none");
+  }
 
   const selectedIds = selectedPlayers.map((player) => player.id);
 
@@ -260,8 +294,8 @@ export default async function MatchdayPage({
         })
         .filter(
           (duo) =>
-            selectedSet.has(duo.a) &&
-            selectedSet.has(duo.b) &&
+            confirmedSet.has(duo.a) &&
+            confirmedSet.has(duo.b) &&
             duo.gamesTogether >= 2
         )
         .map((duo) => ({
@@ -277,6 +311,91 @@ export default async function MatchdayPage({
           return a.playerAName.localeCompare(b.playerAName, "de");
         })[0] ?? null
     : null;
+
+  const bestOverallDuo = Array.from(duoStatsByKey.entries())
+    .map(([key, stats]) => {
+      const [aRaw, bRaw] = key.split("-");
+      const a = Number(aRaw);
+      const b = Number(bRaw);
+      return { a, b, ...stats };
+    })
+    .filter((duo) => duo.gamesTogether >= 3)
+    .map((duo) => ({
+      playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
+      playerBName: playerNameById.get(duo.b) ?? `Spieler #${duo.b}`,
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+    }))
+    .sort((a, b) => {
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })[0] ?? null;
+
+  const bestAvailableDuo = Array.from(duoStatsByKey.entries())
+    .map(([key, stats]) => {
+      const [aRaw, bRaw] = key.split("-");
+      const a = Number(aRaw);
+      const b = Number(bRaw);
+      return { a, b, ...stats };
+    })
+    .filter(
+      (duo) =>
+        confirmedSet.has(duo.a) &&
+        confirmedSet.has(duo.b) &&
+        duo.gamesTogether >= 2
+    )
+    .map((duo) => ({
+      playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
+      playerBName: playerNameById.get(duo.b) ?? `Spieler #${duo.b}`,
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+    }))
+    .sort((a, b) => {
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })[0] ?? null;
+
+  const participantByMatchAndPlayer = new Map<string, "team_1" | "team_2">();
+  for (const participant of historicalParticipants) {
+    participantByMatchAndPlayer.set(
+      `${participant.matchId}-${participant.playerId}`,
+      participant.teamSide
+    );
+  }
+
+  const canceledStreakPlayer = canceledPlayers
+    .map((player) => {
+      let streak = 0;
+
+      for (const match of historicalMatches) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) {
+          continue;
+        }
+
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+
+        if (!didWin) {
+          break;
+        }
+
+        streak += 1;
+      }
+
+      return {
+        name: player.name,
+        streak,
+      };
+    })
+    .filter((entry) => entry.streak >= 3)
+    .sort((a, b) => b.streak - a.streak)[0] ?? null;
 
   const historicalWeatherRows =
     historicalMatchIds.length > 0
@@ -360,7 +479,7 @@ export default async function MatchdayPage({
   const gamesByPlayer = new Map<number, number>();
   const uniqueGameKeys = new Set<string>();
   for (const participant of relevantParticipants) {
-    if (!selectedSet.has(participant.playerId)) continue;
+    if (!confirmedSet.has(participant.playerId)) continue;
     const key = `${participant.playerId}-${participant.matchId}`;
     if (uniqueGameKeys.has(key)) continue;
     uniqueGameKeys.add(key);
@@ -372,11 +491,11 @@ export default async function MatchdayPage({
   for (const goal of relevantGoals) {
     if (goal.isOwnGoal) continue;
 
-    if (selectedSet.has(goal.scorerPlayerId)) {
+    if (confirmedSet.has(goal.scorerPlayerId)) {
       goalsByPlayer.set(goal.scorerPlayerId, (goalsByPlayer.get(goal.scorerPlayerId) ?? 0) + 1);
     }
 
-    if (goal.assistPlayerId !== null && selectedSet.has(goal.assistPlayerId)) {
+    if (goal.assistPlayerId !== null && confirmedSet.has(goal.assistPlayerId)) {
       assistsByPlayer.set(goal.assistPlayerId, (assistsByPlayer.get(goal.assistPlayerId) ?? 0) + 1);
     }
   }
@@ -385,7 +504,7 @@ export default async function MatchdayPage({
     const ranked = Array.from(valuesByPlayer.entries())
       .map(([playerId, value]) => {
         const games = gamesByPlayer.get(playerId) ?? 0;
-        const name = playerNameById.get(playerId) ?? `Spieler #${playerId}`;
+        const name = String(playerNameById.get(playerId) ?? `Spieler #${playerId}`);
         return {
           name,
           value,
@@ -430,10 +549,14 @@ export default async function MatchdayPage({
 
   const forecastLines = buildMatchdayForecast({
     selectedPlayers,
+    canceledPlayers,
     weather,
     strongestDuo,
+    bestOverallDuo,
+    bestAvailableDuo,
     returningPlayers,
     weatherPerformance,
+    canceledStreakPlayer,
   });
 
   async function saveMatchdayParticipants(formData: FormData) {
@@ -454,10 +577,13 @@ export default async function MatchdayPage({
       .where(eq(players.isActive, true));
 
     const selectedIdsToSave: number[] = [];
+    const canceledIdsToSave: number[] = [];
     for (const player of playerRows) {
-      const value = formData.get(`player_${player.id}`);
-      if (value === "on") {
+      const value = String(formData.get(`status_${player.id}`) ?? "none");
+      if (value === "confirmed") {
         selectedIdsToSave.push(player.id);
+      } else if (value === "canceled") {
+        canceledIdsToSave.push(player.id);
       }
     }
 
@@ -494,6 +620,17 @@ export default async function MatchdayPage({
             selectedIdsToSave.map((playerId) => ({
               matchdayId: ensuredMatchdayId,
               playerId,
+              isCanceled: false,
+            }))
+          );
+        }
+
+        if (canceledIdsToSave.length > 0) {
+          await tx.insert(matchdayParticipants).values(
+            canceledIdsToSave.map((playerId) => ({
+              matchdayId: ensuredMatchdayId,
+              playerId,
+              isCanceled: true,
             }))
           );
         }
@@ -539,7 +676,7 @@ export default async function MatchdayPage({
           <section className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
             <h2 className="text-lg font-semibold">Wer ist dabei?</h2>
             <p className="mt-1 text-sm text-zinc-600">
-              Ohne Teameinteilung – einfach nur Zusage für den Spieltag setzen.
+              Ohne Teameinteilung – pro Spieler: dabei, abgesagt oder offen.
             </p>
 
             <form action={saveMatchdayParticipants} className="mt-4 flex flex-col gap-2.5">
@@ -551,12 +688,15 @@ export default async function MatchdayPage({
                   className="flex items-center justify-between gap-3 rounded-lg border border-zinc-300 bg-white px-3 py-2.5"
                 >
                   <span className="text-sm text-zinc-800">{player.name}</span>
-                  <input
-                    type="checkbox"
-                    name={`player_${player.id}`}
-                    defaultChecked={selectedSet.has(player.id)}
-                    className="h-4 w-4 accent-zinc-900"
-                  />
+                  <select
+                    name={`status_${player.id}`}
+                    defaultValue={statusByPlayerId.get(player.id) ?? "none"}
+                    className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800"
+                  >
+                    <option value="none">Offen</option>
+                    <option value="confirmed">Dabei</option>
+                    <option value="canceled">Abgesagt</option>
+                  </select>
                 </label>
               ))}
 

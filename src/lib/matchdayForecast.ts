@@ -35,17 +35,49 @@ type WeatherPerformanceInsight = {
 
 type MatchdayForecastInput = {
   selectedPlayers: SelectedPlayer[];
+  canceledPlayers: SelectedPlayer[];
   weather: WeatherSnapshot;
   strongestDuo: DuoForecast | null;
+  bestOverallDuo: DuoForecast | null;
+  bestAvailableDuo: DuoForecast | null;
   returningPlayers: ReturningPlayer[];
   weatherPerformance: WeatherPerformanceInsight | null;
+  canceledStreakPlayer: {
+    name: string;
+    streak: number;
+  } | null;
 };
 
 export function buildMatchdayForecast(input: MatchdayForecastInput) {
-  const { selectedPlayers, weather, strongestDuo, returningPlayers, weatherPerformance } = input;
+  const {
+    selectedPlayers,
+    canceledPlayers,
+    weather,
+    strongestDuo,
+    bestOverallDuo,
+    bestAvailableDuo,
+    returningPlayers,
+    weatherPerformance,
+    canceledStreakPlayer,
+  } = input;
   const lines: string[] = [];
 
   if (selectedPlayers.length === 0) {
+    if (canceledPlayers.length > 0) {
+      const canceledNames = canceledPlayers.map((player) => player.name);
+      const canceledLabel =
+        canceledNames.length === 1
+          ? canceledNames[0]
+          : `${canceledNames.slice(0, -1).join(", ")} und ${canceledNames[canceledNames.length - 1]}`;
+
+      return [
+        "📭 Noch keine Zusagen – aktuell gewinnt nur der innere Schweinehund.",
+        `🚫 Absage${canceledPlayers.length > 1 ? "n" : ""}: ${canceledLabel} ${
+          canceledPlayers.length > 1 ? "sind" : "ist"
+        } diesmal raus.`,
+      ];
+    }
+
     return [
       "📭 Noch keine Zusagen – aktuell gewinnt nur der innere Schweinehund.",
       "🗓️ Trag erst ein paar Teilnehmer ein, dann gibt’s den großen HoSe-Forecast.",
@@ -62,6 +94,43 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
     lines.push(
       `🤝 ${strongestDuo.playerAName} + ${strongestDuo.playerBName}: ${strongestDuo.winsTogether}/${strongestDuo.gamesTogether} Siege gemeinsam (${strongestDuo.winRatePct}%). Wenn die zusammen in ein Team rutschen, wird’s für die anderen ungemütlich.`
     );
+  }
+
+  if (canceledPlayers.length > 0) {
+    const canceledNames = canceledPlayers.map((player) => player.name);
+    const canceledLabel =
+      canceledNames.length === 1
+        ? canceledNames[0]
+        : `${canceledNames.slice(0, -1).join(", ")} und ${canceledNames[canceledNames.length - 1]}`;
+
+    lines.push(
+      `🚫 Absage${canceledPlayers.length > 1 ? "n" : ""}: ${canceledLabel} ${
+        canceledPlayers.length > 1 ? "sind" : "ist"
+      } diesmal raus.`
+    );
+  }
+
+  if (canceledStreakPlayer && canceledStreakPlayer.streak >= 3) {
+    lines.push(
+      `🤔 ${canceledStreakPlayer.name} hat eine Winning Streak von ${canceledStreakPlayer.streak} Spielen und hat diesmal abgesagt – was ist da los?`
+    );
+  }
+
+  if (
+    bestOverallDuo &&
+    bestOverallDuo.gamesTogether >= 3 &&
+    canceledPlayers.some((player) => player.name === bestOverallDuo.playerAName) &&
+    canceledPlayers.some((player) => player.name === bestOverallDuo.playerBName)
+  ) {
+    if (bestAvailableDuo && bestAvailableDuo.gamesTogether >= 2) {
+      lines.push(
+        `📉 ${bestOverallDuo.playerAName} und ${bestOverallDuo.playerBName} haben abgesagt – dabei sind sie das aktuell beste Duo. Chance für ${bestAvailableDuo.playerAName} + ${bestAvailableDuo.playerBName}, Boden gutzumachen.`
+      );
+    } else {
+      lines.push(
+        `📉 ${bestOverallDuo.playerAName} und ${bestOverallDuo.playerBName} haben abgesagt – damit fehlt das derzeit stärkste Duo komplett.`
+      );
+    }
   }
 
   for (const returning of returningPlayers.slice(0, 2)) {
