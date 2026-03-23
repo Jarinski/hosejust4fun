@@ -83,9 +83,13 @@ function getStatRaceNote({
 
   if (overtakenCandidates.length > 0) {
     const target = overtakenCandidates[0]!;
-    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
+    const targetName = playerNameById.get(target.id);
 
-    return `📈 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
+    if (targetName) {
+      return `📈 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
+    }
+
+    return `📈 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit einen anderen Spieler.`;
   }
 
   const tiedCandidates = allOthers
@@ -94,9 +98,13 @@ function getStatRaceNote({
 
   if (tiedCandidates.length > 0) {
     const target = tiedCandidates[0]!;
-    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
+    const targetName = playerNameById.get(target.id);
 
-    return `🤝 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
+    if (targetName) {
+      return `🤝 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
+    }
+
+    return `🤝 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit einem anderen Spieler gleich.`;
   }
 
   const nearestAhead = allOthers
@@ -109,8 +117,12 @@ function getStatRaceNote({
 
   const diff = nearestAhead.total - afterTotal;
   if (diff === 1) {
-    const targetName = playerNameById.get(nearestAhead.id) ?? `Spieler #${nearestAhead.id}`;
-    return `👀 ${playerName} steht bei ${afterTotal} ${formatStatUnit(afterTotal, mode)} und ist ${targetName} (${nearestAhead.total}) dicht auf den Fersen.`;
+    const targetName = playerNameById.get(nearestAhead.id);
+    if (targetName) {
+      return `👀 ${playerName} steht bei ${afterTotal} ${formatStatUnit(afterTotal, mode)} und ist ${targetName} (${nearestAhead.total}) dicht auf den Fersen.`;
+    }
+
+    return `👀 ${playerName} steht bei ${afterTotal} ${formatStatUnit(afterTotal, mode)} und ist der nächsten Marke (${nearestAhead.total}) dicht auf den Fersen.`;
   }
 
   return null;

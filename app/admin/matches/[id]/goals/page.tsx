@@ -204,11 +204,24 @@ export default async function MatchGoalsPage({
       });
     }
 
-    await db.delete(goalEvents).where(eq(goalEvents.matchId, targetMatchId));
+    const team1Score = rowsToInsert.filter((row) => row.teamSide === "team_1").length;
+    const team2Score = rowsToInsert.filter((row) => row.teamSide === "team_2").length;
 
-    if (rowsToInsert.length > 0) {
-      await db.insert(goalEvents).values(rowsToInsert);
-    }
+    await db.transaction(async (tx) => {
+      await tx.delete(goalEvents).where(eq(goalEvents.matchId, targetMatchId));
+
+      if (rowsToInsert.length > 0) {
+        await tx.insert(goalEvents).values(rowsToInsert);
+      }
+
+      await tx
+        .update(matches)
+        .set({
+          team1Score,
+          team2Score,
+        })
+        .where(eq(matches.id, targetMatchId));
+    });
 
     await recalculateMatchMvp(targetMatchId);
 

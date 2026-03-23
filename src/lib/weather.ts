@@ -82,10 +82,24 @@ function getBerlinWeekdayIndex(date: Date) {
   return weekdayMap[weekdayShort] ?? 0;
 }
 
+function getBerlinHour(date: Date) {
+  const hourRaw = new Intl.DateTimeFormat("en-GB", {
+    timeZone: HOLM_SEPPENSEN.timezone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+
+  const hour = Number(hourRaw);
+  return Number.isFinite(hour) ? hour : 0;
+}
+
 export function getUpcomingMondayIsoInBerlin() {
   const today = new Date();
   const weekdayIndex = getBerlinWeekdayIndex(today);
-  const daysUntilMonday = (1 - weekdayIndex + 7) % 7;
+  const berlinHour = getBerlinHour(today);
+
+  const isMondayAfterKickoff = weekdayIndex === 1 && berlinHour >= 19;
+  const daysUntilMonday = isMondayAfterKickoff ? 7 : (1 - weekdayIndex + 7) % 7;
 
   const upcomingMonday = new Date(today);
   upcomingMonday.setDate(today.getDate() + daysUntilMonday);
