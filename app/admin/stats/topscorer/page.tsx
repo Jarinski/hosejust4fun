@@ -17,8 +17,13 @@ function isMissingColumnError(error: unknown, columnName: string) {
     typeof maybePgError.message === "string" ? maybePgError.message.toLowerCase() : "";
   const normalizedColumnName = columnName.toLowerCase();
 
-  if (message.includes(normalizedColumnName)) {
-    return true;
+  if (message) {
+    const referencesColumn =
+      message.includes(`"${normalizedColumnName}"`) || message.includes(normalizedColumnName);
+
+    if (referencesColumn && message.includes("does not exist")) {
+      return true;
+    }
   }
 
   return maybePgError.code === "42703";
