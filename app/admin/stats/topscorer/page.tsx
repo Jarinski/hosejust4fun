@@ -12,16 +12,17 @@ function isMissingColumnError(error: unknown, columnName: string) {
     return false;
   }
 
-  const maybePgError = error as { code?: string; message?: string };
+  const maybePgError = error as { code?: string; message?: string; cause?: unknown };
   const message =
     typeof maybePgError.message === "string" ? maybePgError.message.toLowerCase() : "";
   const normalizedColumnName = columnName.toLowerCase();
 
-  if (message) {
-    const referencesColumn =
-      message.includes(`"${normalizedColumnName}"`) || message.includes(normalizedColumnName);
+  if (maybePgError.cause && isMissingColumnError(maybePgError.cause, columnName)) {
+    return true;
+  }
 
-    if (referencesColumn && message.includes("does not exist")) {
+  if (message) {
+    if (message.includes(normalizedColumnName)) {
       return true;
     }
   }
