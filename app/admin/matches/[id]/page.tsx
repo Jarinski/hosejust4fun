@@ -56,6 +56,10 @@ function formatStatUnit(count: number, mode: "goal" | "assist") {
   return count === 1 ? "Assist" : "Assists";
 }
 
+function getStatUnitArticle(mode: "goal" | "assist") {
+  return mode === "goal" ? "das" : "den";
+}
+
 function getStatRaceNote({
   mode,
   playerId,
@@ -84,7 +88,7 @@ function getStatRaceNote({
   if (overtakenCandidates.length > 0) {
     const target = overtakenCandidates[0]!;
     const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
-    return `📈 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
+    return `📈 ${playerName} macht ${getStatUnitArticle(mode)} ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
   }
 
   const tiedCandidates = allOthers
@@ -94,7 +98,7 @@ function getStatRaceNote({
   if (tiedCandidates.length > 0) {
     const target = tiedCandidates[0]!;
     const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
-    return `🤝 ${playerName} macht den ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
+    return `🤝 ${playerName} macht ${getStatUnitArticle(mode)} ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
   }
 
   const nearestAhead = allOthers
