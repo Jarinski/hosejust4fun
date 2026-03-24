@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, matchWeather, players } from "@/src/db/schema";
+import {
+  goalEvents,
+  matchParticipants,
+  matches,
+  matchWeather,
+  players,
+  seasons,
+} from "@/src/db/schema";
 import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
 import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
@@ -49,6 +56,132 @@ type TrioWithPlayer = {
   teamGoals: number;
   goalsAgainst: number;
 };
+
+type SeasonalParticipationRow = {
+  seasonId: number;
+  playerId: number;
+  teamSide: "team_1" | "team_2";
+  team1Score: number;
+  team2Score: number;
+};
+
+type SeasonalGoalCountRow = {
+  seasonId: number;
+  playerId: number;
+  goals: number;
+};
+
+type SeasonalAssistCountRow = {
+  seasonId: number;
+  playerId: number;
+  assists: number;
+};
+
+type SeasonalPlayerStat = {
+  seasonId: number;
+  playerId: number;
+  appearances: number;
+  teamGoals: number;
+  goalsAgainst: number;
+  goals: number;
+  assists: number;
+};
+
+type PlayerTitleKey =
+  | "top_goalscorer"
+  | "top_assist"
+  | "top_scorer"
+  | "defensive_wall"
+  | "driving_force";
+
+type PlayerAward = {
+  seasonId: number;
+  seasonName: string;
+  seasonStartDate: string;
+  playerId: number;
+  titleKey: PlayerTitleKey;
+  titleLabel: string;
+  valueLabel: string;
+};
+
+const MIN_APPEARANCES_FOR_RATE_TITLES = 3;
+
+const TITLE_LABELS: Record<PlayerTitleKey, string> = {
+  top_goalscorer: "Torschützenkönig",
+  top_assist: "Assistkönig",
+  top_scorer: "Topscorer",
+  defensive_wall: "Abwehrbollwerk",
+  driving_force: "Antreiber",
+};
+
+const RATE_EPSILON = 1e-9;
+
+function areRatesEqual(a: number, b: number) {
+  return Math.abs(a - b) <= RATE_EPSILON;
+}
+
+async function loadSeasonalGoalCounts(): Promise<SeasonalGoalCountRow[]> {
+  try {
+    return await db
+      .select({
+        seasonId: matches.seasonId,
+        playerId: goalEvents.scorerPlayerId,
+        goals: sql<number>`count(${goalEvents.id})`,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(eq(goalEvents.isOwnGoal, false))
+      .groupBy(matches.seasonId, goalEvents.scorerPlayerId);
+  } catch {
+    return await db
+      .select({
+        seasonId: matches.seasonId,
+        playerId: goalEvents.scorerPlayerId,
+        goals: sql<number>`count(${goalEvents.id})`,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .groupBy(matches.seasonId, goalEvents.scorerPlayerId);
+  }
+}
+
+async function loadSeasonalAssistCounts(): Promise<SeasonalAssistCountRow[]> {
+  try {
+    const rows = await db
+      .select({
+        seasonId: matches.seasonId,
+        playerId: goalEvents.assistPlayerId,
+        assists: sql<number>`count(${goalEvents.id})`,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(and(eq(goalEvents.isOwnGoal, false), isNotNull(goalEvents.assistPlayerId)))
+      .groupBy(matches.seasonId, goalEvents.assistPlayerId);
+
+    return rows.map((row) => ({
+      seasonId: row.seasonId,
+      playerId: row.playerId as number,
+      assists: Number(row.assists) || 0,
+    }));
+  } catch {
+    const rows = await db
+      .select({
+        seasonId: matches.seasonId,
+        playerId: goalEvents.assistPlayerId,
+        assists: sql<number>`count(${goalEvents.id})`,
+      })
+      .from(goalEvents)
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(isNotNull(goalEvents.assistPlayerId))
+      .groupBy(matches.seasonId, goalEvents.assistPlayerId);
+
+    return rows.map((row) => ({
+      seasonId: row.seasonId,
+      playerId: row.playerId as number,
+      assists: Number(row.assists) || 0,
+    }));
+  }
+}
 
 function isRainMatch(match: WeatherMatchRow) {
   return isRainLikeWeather({
@@ -231,6 +364,181 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       </main>
     );
   }
+
+  const [seasonRows, seasonParticipationRows, seasonalGoalRows, seasonalAssistRows] =
+    await Promise.all([
+      db
+        .select({
+          id: seasons.id,
+          name: seasons.name,
+          startDate: seasons.startDate,
+        })
+        .from(seasons)
+        .orderBy(desc(seasons.startDate), desc(seasons.id)),
+      db
+        .select({
+          seasonId: matches.seasonId,
+          playerId: matchParticipants.playerId,
+          teamSide: matchParticipants.teamSide,
+          team1Score: matches.team1Score,
+          team2Score: matches.team2Score,
+        })
+        .from(matchParticipants)
+        .innerJoin(matches, eq(matchParticipants.matchId, matches.id)),
+      loadSeasonalGoalCounts(),
+      loadSeasonalAssistCounts(),
+    ]);
+
+  const seasonalStatsByKey = new Map<string, SeasonalPlayerStat>();
+  const getSeasonalStats = (seasonId: number, targetPlayerId: number) => {
+    const key = `${seasonId}-${targetPlayerId}`;
+    const existing = seasonalStatsByKey.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const created: SeasonalPlayerStat = {
+      seasonId,
+      playerId: targetPlayerId,
+      appearances: 0,
+      teamGoals: 0,
+      goalsAgainst: 0,
+      goals: 0,
+      assists: 0,
+    };
+    seasonalStatsByKey.set(key, created);
+    return created;
+  };
+
+  for (const row of seasonParticipationRows as SeasonalParticipationRow[]) {
+    const stat = getSeasonalStats(row.seasonId, row.playerId);
+    stat.appearances += 1;
+    stat.teamGoals += row.teamSide === "team_1" ? row.team1Score : row.team2Score;
+    stat.goalsAgainst += row.teamSide === "team_1" ? row.team2Score : row.team1Score;
+  }
+
+  for (const row of seasonalGoalRows) {
+    const stat = getSeasonalStats(row.seasonId, row.playerId);
+    stat.goals = Number(row.goals) || 0;
+  }
+
+  for (const row of seasonalAssistRows) {
+    const stat = getSeasonalStats(row.seasonId, row.playerId);
+    stat.assists = Number(row.assists) || 0;
+  }
+
+  const allSeasonalStats = Array.from(seasonalStatsByKey.values());
+  const awards: PlayerAward[] = [];
+
+  const addAwardsForWinners = (
+    season: (typeof seasonRows)[number],
+    titleKey: PlayerTitleKey,
+    winners: SeasonalPlayerStat[],
+    valueLabelForStat: (stat: SeasonalPlayerStat) => string,
+  ) => {
+    for (const winner of winners) {
+      awards.push({
+        seasonId: season.id,
+        seasonName: season.name,
+        seasonStartDate: String(season.startDate),
+        playerId: winner.playerId,
+        titleKey,
+        titleLabel: TITLE_LABELS[titleKey],
+        valueLabel: valueLabelForStat(winner),
+      });
+    }
+  };
+
+  for (const season of seasonRows) {
+    const seasonStats = allSeasonalStats.filter((row) => row.seasonId === season.id);
+    if (seasonStats.length === 0) {
+      continue;
+    }
+
+    const maxGoals = Math.max(...seasonStats.map((row) => row.goals));
+    if (maxGoals > 0) {
+      addAwardsForWinners(
+        season,
+        "top_goalscorer",
+        seasonStats.filter((row) => row.goals === maxGoals),
+        (row) => `${row.goals} Tore`,
+      );
+    }
+
+    const maxAssists = Math.max(...seasonStats.map((row) => row.assists));
+    if (maxAssists > 0) {
+      addAwardsForWinners(
+        season,
+        "top_assist",
+        seasonStats.filter((row) => row.assists === maxAssists),
+        (row) => `${row.assists} Assists`,
+      );
+    }
+
+    const maxPoints = Math.max(...seasonStats.map((row) => row.goals + row.assists));
+    if (maxPoints > 0) {
+      addAwardsForWinners(
+        season,
+        "top_scorer",
+        seasonStats.filter((row) => row.goals + row.assists === maxPoints),
+        (row) => `${row.goals + row.assists} Scorerpunkte`,
+      );
+    }
+
+    const eligibleForRateTitles = seasonStats.filter(
+      (row) => row.appearances >= MIN_APPEARANCES_FOR_RATE_TITLES,
+    );
+
+    if (eligibleForRateTitles.length > 0) {
+      const minConcededPerGame = Math.min(
+        ...eligibleForRateTitles.map((row) => row.goalsAgainst / row.appearances),
+      );
+
+      addAwardsForWinners(
+        season,
+        "defensive_wall",
+        eligibleForRateTitles.filter(
+          (row) => areRatesEqual(row.goalsAgainst / row.appearances, minConcededPerGame),
+        ),
+        (row) => `${(row.goalsAgainst / row.appearances).toFixed(2)} GT/Spiel`,
+      );
+
+      const maxTeamGoalsPerGame = Math.max(
+        ...eligibleForRateTitles.map((row) => row.teamGoals / row.appearances),
+      );
+
+      addAwardsForWinners(
+        season,
+        "driving_force",
+        eligibleForRateTitles.filter(
+          (row) => areRatesEqual(row.teamGoals / row.appearances, maxTeamGoalsPerGame),
+        ),
+        (row) => `${(row.teamGoals / row.appearances).toFixed(2)} Teamtore/Spiel`,
+      );
+    }
+  }
+
+  const playerSeasonalAwards = awards
+    .filter((award) => award.playerId === playerId)
+    .sort((a, b) => {
+      const seasonOrder = b.seasonStartDate.localeCompare(a.seasonStartDate);
+      if (seasonOrder !== 0) return seasonOrder;
+      return a.titleLabel.localeCompare(b.titleLabel, "de");
+    });
+
+  const careerTitleCounts = new Map<PlayerTitleKey, number>();
+  for (const award of playerSeasonalAwards) {
+    careerTitleCounts.set(award.titleKey, (careerTitleCounts.get(award.titleKey) ?? 0) + 1);
+  }
+
+  const careerSummaryItems = (Object.keys(TITLE_LABELS) as PlayerTitleKey[])
+    .map((titleKey) => ({
+      titleKey,
+      titleLabel: TITLE_LABELS[titleKey],
+      count: careerTitleCounts.get(titleKey) ?? 0,
+    }))
+    .filter((entry) => entry.count > 0)
+    .sort((a, b) => b.count - a.count || a.titleLabel.localeCompare(b.titleLabel, "de"));
 
   const gameCountRows = await db
     .select({ count: sql<number>`count(*)` })
@@ -661,6 +969,45 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
         <p className="mb-4 inline-flex rounded-full border border-zinc-300 bg-stone-50 px-3 py-1 text-xs font-medium uppercase tracking-wider text-zinc-600">
           {player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
         </p>
+
+        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">Titel &amp; Badges</h2>
+              <p className="text-xs text-zinc-500">
+                Saison-Titel mit mindestens {MIN_APPEARANCES_FOR_RATE_TITLES} Einsätzen für Abwehrbollwerk und Antreiber.
+              </p>
+            </div>
+          </div>
+
+          {careerSummaryItems.length > 0 ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {careerSummaryItems.map((entry) => (
+                <span
+                  key={entry.titleKey}
+                  className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700"
+                >
+                  {entry.count}× {entry.titleLabel}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-4 text-sm text-zinc-500">Noch keine Titel in den erfassten Saisons.</p>
+          )}
+
+          {playerSeasonalAwards.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {playerSeasonalAwards.map((award, index) => (
+                <li
+                  key={`${award.seasonId}-${award.titleKey}-${index}`}
+                  className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700"
+                >
+                  🏆 {award.titleLabel} – {award.seasonName} <span className="ml-1 text-zinc-500">({award.valueLabel})</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
 
         {pageError === "name" ? (
           <p className="mb-4 rounded-lg border border-red-700/40 bg-red-950/40 px-3 py-2 text-red-300">
