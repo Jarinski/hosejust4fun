@@ -7,10 +7,12 @@ import {
   matchParticipants,
   matches,
   matchWeather,
+  playerBadges,
   players,
   seasons,
 } from "@/src/db/schema";
 import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
+import { BADGE_CATEGORY_ORDER, getBadgeMeta } from "@/src/lib/badges";
 import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
 type PlayerDetailPageProps = {
@@ -182,6 +184,14 @@ async function loadSeasonalAssistCounts(): Promise<SeasonalAssistCountRow[]> {
     }));
   }
 }
+
+type PlayerBadgeRow = {
+  badgeKey: string;
+  seasonId: number;
+  seasonName: string;
+  matchId: number | null;
+  createdAt: Date | null;
+};
 
 function isRainMatch(match: WeatherMatchRow) {
   return isRainLikeWeather({
@@ -579,6 +589,18 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     .orderBy(desc(matches.matchDate), desc(matches.id))
     .limit(10);
 
+  const awardedBadgeRows: PlayerBadgeRow[] = await db
+    .select({
+      badgeKey: playerBadges.badgeKey,
+      seasonId: playerBadges.seasonId,
+      seasonName: seasons.name,
+      matchId: playerBadges.matchId,
+      createdAt: playerBadges.createdAt,
+    })
+    .from(playerBadges)
+    .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+    .where(eq(playerBadges.playerId, playerId));
+
   const weatherMatches = await db
     .select({
       matchId: matchParticipants.matchId,
@@ -702,6 +724,54 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
   }
 
   const winRate = games > 0 ? ((wins / games) * 100).toFixed(1) : "0.0";
+
+  const orderedBadgeCategories: Array<(typeof BADGE_CATEGORY_ORDER)[number] | "Unbekannt"> = [
+    ...BADGE_CATEGORY_ORDER,
+    "Unbekannt",
+  ];
+
+  const badgeCategoryOrder = new Map<
+    (typeof BADGE_CATEGORY_ORDER)[number] | "Unbekannt",
+    number
+  >(orderedBadgeCategories.map((category, index) => [category, index] as const));
+
+  const badgesForDisplay = awardedBadgeRows
+    .map((badge) => ({
+      ...badge,
+      meta: getBadgeMeta(badge.badgeKey),
+    }))
+    .sort((a, b) => {
+      const categoryOrderA = badgeCategoryOrder.get(a.meta.category) ?? Number.MAX_SAFE_INTEGER;
+      const categoryOrderB = badgeCategoryOrder.get(b.meta.category) ?? Number.MAX_SAFE_INTEGER;
+      if (categoryOrderA !== categoryOrderB) {
+        return categoryOrderA - categoryOrderB;
+      }
+
+      if (a.seasonId !== b.seasonId) {
+        return b.seasonId - a.seasonId;
+      }
+
+      const labelCompare = a.meta.label.localeCompare(b.meta.label, "de");
+      if (labelCompare !== 0) {
+        return labelCompare;
+      }
+
+      return a.badgeKey.localeCompare(b.badgeKey, "de");
+    });
+
+  const badgesByCategory = new Map<string, typeof badgesForDisplay>();
+  for (const badge of badgesForDisplay) {
+    const bucket = badgesByCategory.get(badge.meta.category) ?? [];
+    bucket.push(badge);
+    badgesByCategory.set(badge.meta.category, bucket);
+  }
+
+  const orderedBadgeGroups = orderedBadgeCategories
+    .map((category) => ({
+      category,
+      badges: badgesByCategory.get(category) ?? [],
+    }))
+    .filter((group) => group.badges.length > 0);
 
   const participantsByMatchAndTeam = new Map<string, number[]>();
   for (const participant of allParticipantsForPlayerMatches) {
@@ -1125,6 +1195,58 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
             <p className="text-xs uppercase tracking-wider text-zinc-500">Siegesquote</p>
             <p className="mt-1 text-2xl font-bold text-red-300">{winRate}%</p>
           </article>
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-zinc-900">Badges</h2>
+            <span className="rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-600">
+              {badgesForDisplay.length}
+            </span>
+          </div>
+
+          {badgesForDisplay.length === 0 ? (
+            <p className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500">
+              Noch keine Badges freigeschaltet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {orderedBadgeGroups.map((group) => (
+                <div key={group.category}>
+                  <h3 className="mb-2 text-sm font-medium text-zinc-700">{group.category}</h3>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.badges.map((badge) => (
+                      <article
+                        key={`${badge.badgeKey}-${badge.seasonId}-${badge.matchId ?? "season"}`}
+                        className="rounded-xl border border-zinc-300 bg-white px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-zinc-900">
+                          <span className="mr-1" aria-hidden="true">
+                            {badge.meta.emoji}
+                          </span>
+                          {badge.meta.label}
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Saison: {badge.seasonName}
+                          {badge.matchId ? (
+                            <>
+                              {" · "}
+                              <Link
+                                href={`/admin/matches/${badge.matchId}`}
+                                className="text-red-300 hover:text-red-200"
+                              >
+                                Match #{badge.matchId}
+                              </Link>
+                            </>
+                          ) : null}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">

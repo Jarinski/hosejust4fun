@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
+import { awardSimpleBadgesForMatch } from "@/src/lib/awardSimpleBadgesForMatch";
+import { recomputeSeasonStreakBadges } from "@/src/lib/recomputeSeasonStreakBadges";
 import { recalculateMatchMvp } from "@/src/lib/mvp";
 import { GoalRowState, GoalType, GoalsForm } from "./GoalsForm";
 
@@ -190,7 +192,7 @@ export default async function MatchGoalsPage({
     }
 
     const existingMatch = await db
-      .select({ id: matches.id })
+      .select({ id: matches.id, seasonId: matches.seasonId })
       .from(matches)
       .where(eq(matches.id, targetMatchId))
       .limit(1);
@@ -321,7 +323,11 @@ export default async function MatchGoalsPage({
       if (rowsToInsert.length > 0) {
         const valuesForInsert = ownGoalColumnAvailable
           ? rowsToInsert
-          : rowsToInsert.map(({ isOwnGoal: _isOwnGoal, ...rest }) => rest);
+          : rowsToInsert.map((row) => {
+              const { isOwnGoal, ...rest } = row;
+              void isOwnGoal;
+              return rest;
+            });
 
         await tx.insert(goalEvents).values(valuesForInsert);
       }
@@ -339,6 +345,18 @@ export default async function MatchGoalsPage({
       await recalculateMatchMvp(targetMatchId);
     } catch {
       // MVP-Neuberechnung soll das Speichern von Toren nicht blockieren.
+    }
+
+    try {
+      await awardSimpleBadgesForMatch(targetMatchId);
+    } catch {
+      // Badge-Vergabe soll das Speichern von Toren nicht blockieren.
+    }
+
+    try {
+      await recomputeSeasonStreakBadges(existingMatch[0].seasonId);
+    } catch {
+      // Saisonweite Streak-Badge-Neuberechnung soll das Speichern von Toren nicht blockieren.
     }
 
     redirect(`/admin/matches/${targetMatchId}/goals?success=1`);

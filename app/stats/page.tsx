@@ -42,6 +42,11 @@ const publicStatsPages = [
     description: "1:0-Schützen, Ausgleichstreffer sowie frühe/späte Tore",
   },
   {
+    title: "Badge Hall of Fame",
+    href: "/stats/badges",
+    description: "Globale Übersicht: Badge-Ranking, Verteilung und Besitzer je Badge",
+  },
+  {
     title: "Comeback Impact",
     href: "/stats/comeback-impact",
     description: "Wer trifft, wenn sein Team zurückliegt (inkl. späte Comebacks)",

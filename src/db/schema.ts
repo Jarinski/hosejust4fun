@@ -1,6 +1,7 @@
 import {
   pgTable,
   pgEnum,
+  index,
   uniqueIndex,
   serial,
   text,
@@ -94,6 +95,33 @@ export const goalEvents = pgTable("goal_events", {
   minute: integer("minute"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const playerBadges = pgTable(
+  "player_badges",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id),
+    seasonId: integer("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    badgeKey: text("badge_key").notNull(),
+    matchId: integer("match_id").references(() => matches.id, { onDelete: "set null" }),
+    goalEventId: integer("goal_event_id").references(() => goalEvents.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    uniquePlayerSeasonBadge: uniqueIndex("player_badges_player_season_badge_uq").on(
+      table.playerId,
+      table.seasonId,
+      table.badgeKey
+    ),
+    playerIdIdx: index("player_badges_player_id_idx").on(table.playerId),
+    seasonIdIdx: index("player_badges_season_id_idx").on(table.seasonId),
+    badgeKeyIdx: index("player_badges_badge_key_idx").on(table.badgeKey),
+  })
+);
 
 export const matchWeather = pgTable("match_weather", {
   id: serial("id").primaryKey(),
