@@ -2,8 +2,17 @@ import Link from "next/link";
 import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, matchWeather, players, seasons } from "@/src/db/schema";
+import {
+  goalEvents,
+  matchParticipants,
+  matches,
+  matchWeather,
+  playerBadges,
+  players,
+  seasons,
+} from "@/src/db/schema";
 import { getAdminSession } from "@/src/lib/auth";
+import { getBadgeMeta } from "@/src/lib/badges";
 import { buildMatchStory } from "@/src/lib/matchStory";
 import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 import { getWeatherPresentation } from "@/src/lib/weatherIcons";
@@ -46,76 +55,6 @@ function incrementComboCounter(map: Map<string, number>, assistPlayerId: number,
   const next = (map.get(key) ?? 0) + 1;
   map.set(key, next);
   return next;
-}
-
-function formatStatUnit(count: number, mode: "goal" | "assist") {
-  if (mode === "goal") {
-    return count === 1 ? "Tor" : "Tore";
-  }
-
-  return count === 1 ? "Assist" : "Assists";
-}
-
-function getStatUnitArticle(mode: "goal" | "assist") {
-  return mode === "goal" ? "das" : "den";
-}
-
-function getStatRaceNote({
-  mode,
-  playerId,
-  playerName,
-  beforeTotal,
-  afterTotal,
-  totalsAfter,
-  playerNameById,
-}: {
-  mode: "goal" | "assist";
-  playerId: number;
-  playerName: string;
-  beforeTotal: number;
-  afterTotal: number;
-  totalsAfter: Map<number, number>;
-  playerNameById: Map<number, string>;
-}) {
-  const allOthers = [...totalsAfter.entries()]
-    .filter(([id]) => id !== playerId)
-    .map(([id, total]) => ({ id, total }));
-
-  const overtakenCandidates = allOthers
-    .filter((entry) => entry.total === beforeTotal)
-    .sort((a, b) => a.id - b.id);
-
-  if (overtakenCandidates.length > 0) {
-    const target = overtakenCandidates[0]!;
-    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
-    return `📈 ${playerName} macht ${getStatUnitArticle(mode)} ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und überholt damit ${targetName}.`;
-  }
-
-  const tiedCandidates = allOthers
-    .filter((entry) => entry.total === afterTotal)
-    .sort((a, b) => a.id - b.id);
-
-  if (tiedCandidates.length > 0) {
-    const target = tiedCandidates[0]!;
-    const targetName = playerNameById.get(target.id) ?? `Spieler #${target.id}`;
-    return `🤝 ${playerName} macht ${getStatUnitArticle(mode)} ${afterTotal}. ${formatStatUnit(afterTotal, mode)} und zieht damit mit ${targetName} gleich.`;
-  }
-
-  const nearestAhead = allOthers
-    .filter((entry) => entry.total > afterTotal)
-    .sort((a, b) => a.total - b.total || a.id - b.id)[0];
-
-  if (!nearestAhead) {
-    return null;
-  }
-
-  const diff = nearestAhead.total - afterTotal;
-  if (diff === 1) {
-    const targetName = playerNameById.get(nearestAhead.id) ?? `Spieler #${nearestAhead.id}`;
-    return `👀 ${playerName} steht bei ${afterTotal} ${formatStatUnit(afterTotal, mode)} und ist ${targetName} (${nearestAhead.total}) dicht auf den Fersen.`;
-  }
-
-  return null;
 }
 
 function getGermanPossessiveName(name: string) {
@@ -438,11 +377,9 @@ export default async function MatchDetailPage({
     }));
   }
 
-  // Wichtig: Für diese Race- und Überhol-Insights zählen nur moderne Spieldaten
+  // Für die Kombinations-Zähler zählen nur moderne Spieldaten
   // aus matches + goal_events (keine legacy_* Tabellen).
   let previousAssistCombosModern = new Map<string, number>();
-  let previousGoalsByPlayerModern = new Map<number, number>();
-  let previousAssistsByPlayerModern = new Map<number, number>();
 
   try {
     const previousAssistRows = await db
@@ -487,80 +424,25 @@ export default async function MatchDetailPage({
     }, new Map<string, number>());
   }
 
-  try {
-    const previousModernScoringRows = await db
-      .select({
-        isOwnGoal: goalEvents.isOwnGoal,
-        scorerPlayerId: goalEvents.scorerPlayerId,
-        assistPlayerId: goalEvents.assistPlayerId,
-      })
-      .from(goalEvents)
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(historicalBoundaryFilter);
+  const badgeRows = await db
+    .select({
+      playerId: playerBadges.playerId,
+      badgeKey: playerBadges.badgeKey,
+      goalEventId: playerBadges.goalEventId,
+    })
+    .from(playerBadges)
+    .where(eq(playerBadges.matchId, matchId));
 
-    previousGoalsByPlayerModern = previousModernScoringRows.reduce((acc, goal) => {
-      if (goal.isOwnGoal) {
-        return acc;
-      }
-
-      incrementMapCounter(acc, goal.scorerPlayerId);
+  const badgesByGoalEventId = badgeRows.reduce((acc, badge) => {
+    if (badge.goalEventId === null) {
       return acc;
-    }, new Map<number, number>());
-
-    previousAssistsByPlayerModern = previousModernScoringRows.reduce((acc, goal) => {
-      if (goal.isOwnGoal || goal.assistPlayerId === null) {
-        return acc;
-      }
-
-      incrementMapCounter(acc, goal.assistPlayerId);
-      return acc;
-    }, new Map<number, number>());
-  } catch (error) {
-    if (!isMissingColumnError(error, "is_own_goal")) {
-      throw error;
     }
 
-    const previousModernScoringRowsLegacy = await db
-      .select({
-        scorerPlayerId: goalEvents.scorerPlayerId,
-        assistPlayerId: goalEvents.assistPlayerId,
-      })
-      .from(goalEvents)
-      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-      .where(historicalBoundaryFilter);
-
-    previousGoalsByPlayerModern = previousModernScoringRowsLegacy.reduce((acc, goal) => {
-      incrementMapCounter(acc, goal.scorerPlayerId);
-      return acc;
-    }, new Map<number, number>());
-
-    previousAssistsByPlayerModern = previousModernScoringRowsLegacy.reduce((acc, goal) => {
-      if (goal.assistPlayerId === null) {
-        return acc;
-      }
-
-      incrementMapCounter(acc, goal.assistPlayerId);
-      return acc;
-    }, new Map<number, number>());
-  }
-
-  // Für Race-Notizen brauchen wir auch Namen von Spielern,
-  // die in früheren Matches vorkommen, aber heute nicht auf dem Feld standen.
-  const raceRelevantPlayerIds = Array.from(
-    new Set([...previousGoalsByPlayerModern.keys(), ...previousAssistsByPlayerModern.keys()])
-  );
-  const missingRacePlayerIds = raceRelevantPlayerIds.filter((playerId) => !playerNameById.has(playerId));
-
-  if (missingRacePlayerIds.length > 0) {
-    const racePlayers = await db
-      .select({ id: players.id, name: players.name })
-      .from(players)
-      .where(inArray(players.id, missingRacePlayerIds));
-
-    for (const player of racePlayers) {
-      playerNameById.set(player.id, player.name);
-    }
-  }
+    const existing = acc.get(badge.goalEventId) ?? [];
+    existing.push({ playerId: badge.playerId, badgeKey: badge.badgeKey });
+    acc.set(badge.goalEventId, existing);
+    return acc;
+  }, new Map<number, Array<{ playerId: number; badgeKey: string }>>());
 
   const previousSeasonEarlyGoalsCount = previousSeasonGoals.filter(
     (goal) => !goal.isOwnGoal && isEarlyGoalMinute(goal.minute)
@@ -711,8 +593,6 @@ export default async function MatchDetailPage({
       const statisticNotes: string[] = [];
       const firstGoalsByScorer = new Map(acc.firstGoalsByScorer);
       const assistCombosModern = new Map(acc.assistCombosModern);
-      const goalsByPlayerModern = new Map(acc.goalsByPlayerModern);
-      const assistsByPlayerModern = new Map(acc.assistsByPlayerModern);
       const seasonLateGoalsByScorer = new Map(acc.seasonLateGoalsByScorer);
       let seasonEarlyGoals = acc.seasonEarlyGoals;
 
@@ -731,20 +611,6 @@ export default async function MatchDetailPage({
         }
 
         const scorerName = playerNameById.get(goal.scorerPlayerId) ?? `Spieler #${goal.scorerPlayerId}`;
-        const scorerBeforeTotal = goalsByPlayerModern.get(goal.scorerPlayerId) ?? 0;
-        const scorerAfterTotal = incrementMapCounter(goalsByPlayerModern, goal.scorerPlayerId);
-        const scorerRaceNote = getStatRaceNote({
-          mode: "goal",
-          playerId: goal.scorerPlayerId,
-          playerName: scorerName,
-          beforeTotal: scorerBeforeTotal,
-          afterTotal: scorerAfterTotal,
-          totalsAfter: goalsByPlayerModern,
-          playerNameById,
-        });
-        if (scorerRaceNote) {
-          statisticNotes.push(scorerRaceNote);
-        }
 
         if (isLateGoalMinute(goal.minute)) {
           const scorerLateGoals = incrementMapCounter(seasonLateGoalsByScorer, goal.scorerPlayerId);
@@ -776,20 +642,6 @@ export default async function MatchDetailPage({
 
         if (goal.assistPlayerId !== null) {
           const assistName = playerNameById.get(goal.assistPlayerId) ?? `Spieler #${goal.assistPlayerId}`;
-          const assistBeforeTotal = assistsByPlayerModern.get(goal.assistPlayerId) ?? 0;
-          const assistAfterTotal = incrementMapCounter(assistsByPlayerModern, goal.assistPlayerId);
-          const assistRaceNote = getStatRaceNote({
-            mode: "assist",
-            playerId: goal.assistPlayerId,
-            playerName: assistName,
-            beforeTotal: assistBeforeTotal,
-            afterTotal: assistAfterTotal,
-            totalsAfter: assistsByPlayerModern,
-            playerNameById,
-          });
-          if (assistRaceNote) {
-            statisticNotes.push(assistRaceNote);
-          }
 
           const comboCount = incrementComboCounter(
             assistCombosModern,
@@ -811,6 +663,13 @@ export default async function MatchDetailPage({
             );
           }
         }
+
+        const goalBadges = badgesByGoalEventId.get(goal.id) ?? [];
+        for (const badge of goalBadges) {
+          const badgePlayerName = playerNameById.get(badge.playerId) ?? `Spieler #${badge.playerId}`;
+          const badgeMeta = getBadgeMeta(badge.badgeKey);
+          statisticNotes.push(`🏅 Badge geholt: ${badgePlayerName} – ${badgeMeta.emoji} ${badgeMeta.label}.`);
+        }
       }
 
       return {
@@ -820,8 +679,6 @@ export default async function MatchDetailPage({
         seasonLateGoalsByScorer,
         firstGoalsByScorer,
         assistCombosModern,
-        goalsByPlayerModern,
-        assistsByPlayerModern,
         goals: [...acc.goals, { ...goal, scoreAfterGoal: `${team1}:${team2}`, statisticNotes }],
       };
     },
@@ -832,8 +689,6 @@ export default async function MatchDetailPage({
       seasonLateGoalsByScorer: new Map(previousSeasonLateGoalsByScorer),
       firstGoalsByScorer: new Map(previousSeasonFirstGoalsByScorer),
       assistCombosModern: new Map(previousAssistCombosModern),
-      goalsByPlayerModern: new Map(previousGoalsByPlayerModern),
-      assistsByPlayerModern: new Map(previousAssistsByPlayerModern),
       goals: [] as TimelineGoalView[],
     }
   );

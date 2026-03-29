@@ -251,7 +251,11 @@ export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageP
                 {publicPlayerStats.map((player) => (
                   <li key={player.playerId} className="rounded-lg border border-zinc-300 bg-white p-3">
                     <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
-                      <p className="font-medium text-zinc-900">{player.playerName}</p>
+                      <p className="font-medium text-zinc-900">
+                        <Link href={`/admin/players/${player.playerId}`} className="hover:underline">
+                          {player.playerName}
+                        </Link>
+                      </p>
                       <p className="text-sm text-zinc-700">Modern Tore: <span className="font-semibold text-zinc-900">{player.goals}</span></p>
                       <p className="text-sm text-zinc-700">Legacy Tore: <span className="font-semibold text-zinc-900">{player.legacyGoals}</span></p>
                       <p className="text-sm text-zinc-700">Gesamt Tore: <span className="font-semibold text-zinc-900">{player.totalGoals}</span></p>

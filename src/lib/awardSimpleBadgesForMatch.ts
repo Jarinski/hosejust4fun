@@ -72,8 +72,9 @@ function getMatchWeatherFlags(weather: MatchWeatherSnapshot | null): MatchWeathe
   // Sunshine bewusst streng: nur klarer Himmel, ohne Wolken-Signal.
   const hasClearSkySignal = hasConditionLabel && CLEAR_SKY_REGEX.test(conditionLabel);
   const hasCloudSignal = hasConditionLabel && CLOUDY_REGEX.test(conditionLabel);
-  const isSunshine = hasClearSkySignal && !hasCloudSignal;
-  const isCloudy = hasCloudSignal && !hasClearSkySignal;
+  // Regen hat immer Priorität: bei Regen keine Sunshine/Cloudy-Badges.
+  const isSunshine = hasClearSkySignal && !hasCloudSignal && !isRain;
+  const isCloudy = hasCloudSignal && !hasClearSkySignal && !isRain;
 
   const isHeat = hasTemperature && temperatureC > 30;
   const isCold = hasTemperature && temperatureC < COLD_DEFAULT_THRESHOLD_C;
@@ -280,6 +281,27 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
   const losingSide: TeamSide | null = winningSide ? getOppositeTeamSide(winningSide) : null;
   const finalMargin = Math.abs(team1FinalScore - team2FinalScore);
 
+  const losingSideFinalGoals =
+    losingSide === "team_1" ? team1FinalScore : losingSide === "team_2" ? team2FinalScore : 0;
+
+  let consolationGoalEventId: number | null = null;
+
+  if (losingSide !== null && losingSideFinalGoals > 0) {
+    for (const state of scoreStates) {
+      const scoringTeamAfter =
+        losingSide === "team_1" ? state.team1After : state.team2After;
+
+      if (
+        !state.goal.isOwnGoal &&
+        state.goal.teamSide === losingSide &&
+        scoringTeamAfter === losingSideFinalGoals
+      ) {
+        consolationGoalEventId = state.goal.id;
+        break;
+      }
+    }
+  }
+
   const goalCountByPlayer = new Map<number, number>();
   const assistCountByPlayer = new Map<number, number>();
   const assistToScorerPairs = new Set<string>();
@@ -446,13 +468,7 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
     const isEqualizerGoal = scoringTeamAfter === concedingTeamAfter;
     const isComebackGoal = scoringTeamBefore < concedingTeamBefore;
     const isWinningGoal = winningGoalEventId !== null && goal.id === winningGoalEventId;
-    const isConsolationGoal =
-      !goal.isOwnGoal &&
-      losingSide !== null &&
-      finalMargin >= 2 &&
-      goal.teamSide === losingSide &&
-      scoringTeamBefore < concedingTeamBefore &&
-      scoringTeamAfter < concedingTeamAfter;
+    const isConsolationGoal = consolationGoalEventId !== null && goal.id === consolationGoalEventId;
 
     if (!goal.isOwnGoal && isEqualizerGoal) {
       pendingBadges.push({
