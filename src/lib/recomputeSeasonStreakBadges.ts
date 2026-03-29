@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { matchParticipants, matches, playerBadges } from "@/src/db/schema";
+import { goalEvents, matchParticipants, matches, playerBadges } from "@/src/db/schema";
 import { BADGE_KEYS, type BadgeKey } from "@/src/lib/badges";
 
 type TeamSide = "team_1" | "team_2";
@@ -29,6 +29,13 @@ const SEASON_WIDE_STREAK_BADGE_KEYS: BadgeKey[] = [
   BADGE_KEYS.LOSS_STREAK_10,
   BADGE_KEYS.CLEAN_SHEET_STREAK_2,
   BADGE_KEYS.CLEAN_SHEET_STREAK_3,
+  BADGE_KEYS.ASSIST_STREAK_3,
+  BADGE_KEYS.ASSIST_STREAK_5,
+  BADGE_KEYS.ASSIST_STREAK_10,
+  BADGE_KEYS.APPEARANCE_STREAK_3,
+  BADGE_KEYS.APPEARANCE_STREAK_5,
+  BADGE_KEYS.APPEARANCE_STREAK_10,
+  BADGE_KEYS.APPEARANCE_STREAK_20,
 ];
 
 function getResultForParticipant(match: SeasonMatchRow, teamSide: TeamSide): MatchResult {
@@ -98,6 +105,37 @@ export async function recomputeSeasonStreakBadges(seasonId: number) {
     }
 
     participantsByMatch.set(participant.matchId, [participant]);
+  }
+
+  const assistRows = await db
+    .select({
+      matchId: goalEvents.matchId,
+      assistPlayerId: goalEvents.assistPlayerId,
+    })
+    .from(goalEvents)
+    .where(inArray(goalEvents.matchId, matchIds));
+
+  const assistPlayersByMatch = new Map<number, Set<number>>();
+
+  for (const assistRow of assistRows) {
+    if (assistRow.assistPlayerId === null) {
+      continue;
+    }
+
+    const existingAssistPlayers = assistPlayersByMatch.get(assistRow.matchId);
+
+    if (existingAssistPlayers) {
+      existingAssistPlayers.add(assistRow.assistPlayerId);
+      continue;
+    }
+
+    assistPlayersByMatch.set(assistRow.matchId, new Set([assistRow.assistPlayerId]));
+  }
+
+  const playerIdsInSeason = new Set<number>();
+
+  for (const participant of participantRows) {
+    playerIdsInSeason.add(participant.playerId);
   }
 
   const playerSequences = new Map<
@@ -201,6 +239,85 @@ export async function recomputeSeasonStreakBadges(seasonId: number) {
 
       if (cleanSheetStreak >= 3 && !unlockedBadges.has(BADGE_KEYS.CLEAN_SHEET_STREAK_3)) {
         unlockedBadges.set(BADGE_KEYS.CLEAN_SHEET_STREAK_3, entry.matchId);
+      }
+    }
+
+    for (const [badgeKey, matchId] of unlockedBadges.entries()) {
+      badgesToInsert.push({
+        playerId,
+        seasonId,
+        badgeKey,
+        matchId,
+        goalEventId: null,
+      });
+    }
+  }
+
+  for (const playerId of playerIdsInSeason) {
+    let appearanceStreak = 0;
+    let assistStreak = 0;
+
+    const unlockedBadges = new Map<BadgeKey, number>();
+
+    for (const match of matchRows) {
+      const participants = participantsByMatch.get(match.id) ?? [];
+      const participated = participants.some((participant) => participant.playerId === playerId);
+
+      if (!participated) {
+        appearanceStreak = 0;
+        assistStreak = 0;
+        continue;
+      }
+
+      appearanceStreak += 1;
+
+      const assistPlayers = assistPlayersByMatch.get(match.id);
+      const hasAssistInMatch = assistPlayers?.has(playerId) ?? false;
+
+      if (hasAssistInMatch) {
+        assistStreak += 1;
+      } else {
+        assistStreak = 0;
+      }
+
+      if (
+        appearanceStreak >= 3 &&
+        !unlockedBadges.has(BADGE_KEYS.APPEARANCE_STREAK_3)
+      ) {
+        unlockedBadges.set(BADGE_KEYS.APPEARANCE_STREAK_3, match.id);
+      }
+
+      if (
+        appearanceStreak >= 5 &&
+        !unlockedBadges.has(BADGE_KEYS.APPEARANCE_STREAK_5)
+      ) {
+        unlockedBadges.set(BADGE_KEYS.APPEARANCE_STREAK_5, match.id);
+      }
+
+      if (
+        appearanceStreak >= 10 &&
+        !unlockedBadges.has(BADGE_KEYS.APPEARANCE_STREAK_10)
+      ) {
+        unlockedBadges.set(BADGE_KEYS.APPEARANCE_STREAK_10, match.id);
+      }
+
+      if (
+        appearanceStreak >= 20 &&
+        !unlockedBadges.has(BADGE_KEYS.APPEARANCE_STREAK_20)
+      ) {
+        unlockedBadges.set(BADGE_KEYS.APPEARANCE_STREAK_20, match.id);
+      }
+
+      if (assistStreak >= 3 && !unlockedBadges.has(BADGE_KEYS.ASSIST_STREAK_3)) {
+        unlockedBadges.set(BADGE_KEYS.ASSIST_STREAK_3, match.id);
+      }
+
+      if (assistStreak >= 5 && !unlockedBadges.has(BADGE_KEYS.ASSIST_STREAK_5)) {
+        unlockedBadges.set(BADGE_KEYS.ASSIST_STREAK_5, match.id);
+      }
+
+      if (assistStreak >= 10 && !unlockedBadges.has(BADGE_KEYS.ASSIST_STREAK_10)) {
+        unlockedBadges.set(BADGE_KEYS.ASSIST_STREAK_10, match.id);
       }
     }
 

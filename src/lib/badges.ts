@@ -5,6 +5,8 @@ export const BADGE_KEYS = {
   FIRST_15_GOAL: "first_15_goal",
   LAST_15_GOAL: "last_15_goal",
   LAST_MINUTE_GOAL: "last_minute_goal",
+  LAST_MINUTE_WINNER: "last_minute_winner",
+  LAST_MINUTE_EQUALIZER: "last_minute_equalizer",
   FAST_START_GOAL: "fast_start_goal",
 
   // Spielstand
@@ -73,6 +75,13 @@ export const BADGE_KEYS = {
   // Serien
   CLEAN_SHEET_STREAK_2: "clean_sheet_streak_2",
   CLEAN_SHEET_STREAK_3: "clean_sheet_streak_3",
+  ASSIST_STREAK_3: "assist_streak_3",
+  ASSIST_STREAK_5: "assist_streak_5",
+  ASSIST_STREAK_10: "assist_streak_10",
+  APPEARANCE_STREAK_3: "appearance_streak_3",
+  APPEARANCE_STREAK_5: "appearance_streak_5",
+  APPEARANCE_STREAK_10: "appearance_streak_10",
+  APPEARANCE_STREAK_20: "appearance_streak_20",
 
   // Wetter
   RAIN_WALL: "rain_wall",
@@ -138,6 +147,18 @@ export const BADGE_META_BY_KEY: Record<BadgeKey, BadgeMeta> = {
     emoji: "⏱️",
     category: "Tore",
     description: "Tor ab der 89. Minute.",
+  },
+  last_minute_winner: {
+    label: "Last-Minute-Sieger",
+    emoji: "⏱️",
+    category: "Tore",
+    description: "Echtes Siegtor ab der 89. Minute.",
+  },
+  last_minute_equalizer: {
+    label: "Last-Minute-Ausgleich",
+    emoji: "⏱️",
+    category: "Tore",
+    description: "Echter Ausgleichstreffer ab der 89. Minute.",
   },
   fast_start_goal: {
     label: "Schnellstarter",
@@ -381,6 +402,48 @@ export const BADGE_META_BY_KEY: Record<BadgeKey, BadgeMeta> = {
     emoji: "🏯",
     category: "Serien",
     description: "Drei Spiele in Folge ohne Gegentor.",
+  },
+  assist_streak_3: {
+    label: "Vorlagen-Lauf",
+    emoji: "🪄",
+    category: "Serien",
+    description: "Drei Spiele in Folge mit mindestens einer Vorlage.",
+  },
+  assist_streak_5: {
+    label: "Vorlagen-Express",
+    emoji: "🚆",
+    category: "Serien",
+    description: "Fünf Spiele in Folge mit mindestens einer Vorlage.",
+  },
+  assist_streak_10: {
+    label: "Vorlagen-Legende",
+    emoji: "👑",
+    category: "Serien",
+    description: "Zehn Spiele in Folge mit mindestens einer Vorlage.",
+  },
+  appearance_streak_3: {
+    label: "Dauerbrenner",
+    emoji: "🟢",
+    category: "Serien",
+    description: "Drei Spiele in Folge teilgenommen.",
+  },
+  appearance_streak_5: {
+    label: "Immer dabei",
+    emoji: "🔁",
+    category: "Serien",
+    description: "Fünf Spiele in Folge teilgenommen.",
+  },
+  appearance_streak_10: {
+    label: "Stammkraft",
+    emoji: "🧷",
+    category: "Serien",
+    description: "Zehn Spiele in Folge teilgenommen.",
+  },
+  appearance_streak_20: {
+    label: "Dauerläufer",
+    emoji: "🏃",
+    category: "Serien",
+    description: "Zwanzig Spiele in Folge teilgenommen.",
   },
   rain_wall: {
     label: "Regen-Mauer",

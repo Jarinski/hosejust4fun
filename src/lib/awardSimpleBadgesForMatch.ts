@@ -469,6 +469,7 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
     const isComebackGoal = scoringTeamBefore < concedingTeamBefore;
     const isWinningGoal = winningGoalEventId !== null && goal.id === winningGoalEventId;
     const isConsolationGoal = consolationGoalEventId !== null && goal.id === consolationGoalEventId;
+    const isLastMinute = goal.minute !== null && goal.minute >= 89;
 
     if (!goal.isOwnGoal && isEqualizerGoal) {
       pendingBadges.push({
@@ -478,6 +479,16 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
         matchId,
         goalEventId: goal.id,
       });
+
+      if (isLastMinute) {
+        pendingBadges.push({
+          playerId: goal.scorerPlayerId,
+          seasonId: match.seasonId,
+          badgeKey: BADGE_KEYS.LAST_MINUTE_EQUALIZER,
+          matchId,
+          goalEventId: goal.id,
+        });
+      }
     }
 
     if (!goal.isOwnGoal && isComebackGoal) {
@@ -498,6 +509,16 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
         matchId,
         goalEventId: goal.id,
       });
+
+      if (isLastMinute) {
+        pendingBadges.push({
+          playerId: goal.scorerPlayerId,
+          seasonId: match.seasonId,
+          badgeKey: BADGE_KEYS.LAST_MINUTE_WINNER,
+          matchId,
+          goalEventId: goal.id,
+        });
+      }
     }
 
     if (isConsolationGoal) {
