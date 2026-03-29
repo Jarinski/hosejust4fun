@@ -38,7 +38,7 @@ export default async function NewPlayerPage({
     const newPlayerId = insertedPlayers[0]?.id;
 
     if (!newPlayerId) {
-      redirect("/admin/players");
+      redirect("/stats/players");
     }
 
     redirect(`/admin/players/${newPlayerId}`);
@@ -48,7 +48,7 @@ export default async function NewPlayerPage({
     <main className="min-h-screen bg-stone-100 p-6 text-zinc-900">
       <section className="mx-auto w-full max-w-2xl rounded-2xl border border-zinc-300 bg-white p-6">
         <p className="mb-4 text-sm text-zinc-600">
-          <Link href="/admin/players" className="hover:text-zinc-900">← Zurück zu Spielern</Link>
+          <Link href="/stats/players" className="hover:text-zinc-900">← Zurück zu Spielern</Link>
         </p>
 
         <h1 className="mb-4 text-2xl font-semibold">Neuer Spieler</h1>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { playerBadges, players, seasons } from "@/src/db/schema";
+import { matches, playerBadges, players, seasons } from "@/src/db/schema";
 import { BADGE_META_BY_KEY, getBadgeMeta, getBadgeRarity } from "@/src/lib/badges";
 import { isMissingRelationError } from "@/src/lib/dbErrors";
 
@@ -64,6 +64,7 @@ export default async function BadgeDetailPage({ params, searchParams }: BadgeDet
     seasonId: number;
     seasonName: string;
     matchId: number | null;
+    matchDate: Date | null;
   }> = [];
 
   try {
@@ -82,10 +83,12 @@ export default async function BadgeDetailPage({ params, searchParams }: BadgeDet
           seasonId: seasons.id,
           seasonName: seasons.name,
           matchId: playerBadges.matchId,
+          matchDate: matches.matchDate,
         })
         .from(playerBadges)
         .innerJoin(players, eq(playerBadges.playerId, players.id))
         .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+        .leftJoin(matches, eq(playerBadges.matchId, matches.id))
         .where(badgeFilter)
         .orderBy(desc(seasons.startDate), desc(seasons.id), asc(players.name)),
     ]);
@@ -220,7 +223,11 @@ export default async function BadgeDetailPage({ params, searchParams }: BadgeDet
                             href={`/admin/matches/${owner.matchId}`}
                             className="font-medium text-zinc-900 hover:text-zinc-700"
                           >
-                            #{owner.matchId}
+                            {owner.matchDate?.toLocaleDateString("de-DE", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            }) ?? "Match"}
                           </Link>
                         ) : (
                           <span className="text-zinc-500">—</span>

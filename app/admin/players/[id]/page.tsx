@@ -12,7 +12,7 @@ import {
   seasons,
 } from "@/src/db/schema";
 import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
-import { BADGE_CATEGORY_ORDER, getBadgeMeta } from "@/src/lib/badges";
+import { BADGE_CATEGORY_ORDER, BADGE_KEYS, getBadgeMeta } from "@/src/lib/badges";
 import { isMissingRelationError } from "@/src/lib/dbErrors";
 import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
@@ -191,6 +191,7 @@ type PlayerBadgeRow = {
   seasonId: number;
   seasonName: string;
   matchId: number | null;
+  matchDate: Date | null;
   createdAt: Date | null;
 };
 
@@ -598,10 +599,12 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
           seasonId: playerBadges.seasonId,
           seasonName: seasons.name,
           matchId: playerBadges.matchId,
+          matchDate: matches.matchDate,
           createdAt: playerBadges.createdAt,
         })
         .from(playerBadges)
         .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+        .leftJoin(matches, eq(playerBadges.matchId, matches.id))
         .where(eq(playerBadges.playerId, playerId));
     } catch (error) {
       if (isMissingRelationError(error, "player_badges")) {
@@ -746,20 +749,41 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     number
   >(orderedBadgeCategories.map((category, index) => [category, index] as const));
 
-  const badgesForDisplay = awardedBadgeRows
-    .map((badge) => ({
-      ...badge,
-      meta: getBadgeMeta(badge.badgeKey),
-    }))
+  const awardedBadgesByKey = new Map<string, PlayerBadgeRow[]>();
+  for (const badge of awardedBadgeRows) {
+    const bucket = awardedBadgesByKey.get(badge.badgeKey) ?? [];
+    bucket.push(badge);
+    awardedBadgesByKey.set(badge.badgeKey, bucket);
+  }
+
+  const allBadgesForDisplay = Object.values(BADGE_KEYS)
+    .map((badgeKey) => {
+      const awards = [...(awardedBadgesByKey.get(badgeKey) ?? [])].sort((a, b) => {
+        if (a.seasonId !== b.seasonId) {
+          return b.seasonId - a.seasonId;
+        }
+
+        const timeA = a.createdAt?.getTime() ?? 0;
+        const timeB = b.createdAt?.getTime() ?? 0;
+        if (timeA !== timeB) {
+          return timeB - timeA;
+        }
+
+        return (b.matchId ?? 0) - (a.matchId ?? 0);
+      });
+
+      return {
+        badgeKey,
+        meta: getBadgeMeta(badgeKey),
+        awards,
+        isUnlocked: awards.length > 0,
+      };
+    })
     .sort((a, b) => {
       const categoryOrderA = badgeCategoryOrder.get(a.meta.category) ?? Number.MAX_SAFE_INTEGER;
       const categoryOrderB = badgeCategoryOrder.get(b.meta.category) ?? Number.MAX_SAFE_INTEGER;
       if (categoryOrderA !== categoryOrderB) {
         return categoryOrderA - categoryOrderB;
-      }
-
-      if (a.seasonId !== b.seasonId) {
-        return b.seasonId - a.seasonId;
       }
 
       const labelCompare = a.meta.label.localeCompare(b.meta.label, "de");
@@ -770,8 +794,8 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       return a.badgeKey.localeCompare(b.badgeKey, "de");
     });
 
-  const badgesByCategory = new Map<string, typeof badgesForDisplay>();
-  for (const badge of badgesForDisplay) {
+  const badgesByCategory = new Map<string, typeof allBadgesForDisplay>();
+  for (const badge of allBadgesForDisplay) {
     const bucket = badgesByCategory.get(badge.meta.category) ?? [];
     bucket.push(badge);
     badgesByCategory.set(badge.meta.category, bucket);
@@ -783,6 +807,8 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       badges: badgesByCategory.get(category) ?? [],
     }))
     .filter((group) => group.badges.length > 0);
+
+  const unlockedBadgeCount = allBadgesForDisplay.filter((badge) => badge.isUnlocked).length;
 
   const participantsByMatchAndTeam = new Map<string, number[]>();
   for (const participant of allParticipantsForPlayerMatches) {
@@ -971,7 +997,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
     const targetPlayerId = Number(formData.get("playerId"));
     if (!Number.isInteger(targetPlayerId)) {
-      redirect("/admin/players");
+      redirect("/stats/players");
     }
 
     const nameRaw = formData.get("name");
@@ -1002,7 +1028,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
     const targetPlayerId = Number(formData.get("playerId"));
     if (!Number.isInteger(targetPlayerId)) {
-      redirect("/admin/players");
+      redirect("/stats/players");
     }
 
     const participantLinks = await db
@@ -1036,7 +1062,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
     await db.delete(players).where(eq(players.id, targetPlayerId));
 
-    redirect("/admin/players");
+    redirect("/stats/players");
   }
 
   return (
@@ -1212,52 +1238,64 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-zinc-900">Badges</h2>
             <span className="rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-600">
-              {badgesForDisplay.length}
+              {unlockedBadgeCount}/{allBadgesForDisplay.length}
             </span>
           </div>
 
-          {badgesForDisplay.length === 0 ? (
-            <p className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500">
-              Noch keine Badges freigeschaltet.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {orderedBadgeGroups.map((group) => (
-                <div key={group.category}>
-                  <h3 className="mb-2 text-sm font-medium text-zinc-700">{group.category}</h3>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {group.badges.map((badge) => (
-                      <article
-                        key={`${badge.badgeKey}-${badge.seasonId}-${badge.matchId ?? "season"}`}
-                        className="rounded-xl border border-zinc-300 bg-white px-3 py-2"
-                      >
-                        <p className="text-sm font-semibold text-zinc-900">
-                          <span className="mr-1" aria-hidden="true">
-                            {badge.meta.emoji}
-                          </span>
-                          {badge.meta.label}
-                        </p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Saison: {badge.seasonName}
-                          {badge.matchId ? (
-                            <>
-                              {" · "}
-                              <Link
-                                href={`/admin/matches/${badge.matchId}`}
-                                className="text-red-300 hover:text-red-200"
-                              >
-                                Match #{badge.matchId}
-                              </Link>
-                            </>
-                          ) : null}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
+          <div className="space-y-4">
+            {orderedBadgeGroups.map((group) => (
+              <div key={group.category}>
+                <h3 className="mb-2 text-sm font-medium text-zinc-700">{group.category}</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.badges.map((badge) => (
+                    <article
+                      key={badge.badgeKey}
+                      className={`rounded-xl border border-zinc-300 bg-white px-3 py-2 ${
+                        badge.isUnlocked ? "" : "opacity-40 grayscale"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-900">
+                        <span className="mr-1" aria-hidden="true">
+                          {badge.meta.emoji}
+                        </span>
+                        {badge.meta.label}
+                      </p>
+                      {badge.meta.description ? (
+                        <p className="mt-1 text-xs text-zinc-500">{badge.meta.description}</p>
+                      ) : null}
+
+                      {badge.isUnlocked ? (
+                        <ul className="mt-2 space-y-1 text-xs text-zinc-500">
+                          {badge.awards.map((award, index) => (
+                            <li key={`${badge.badgeKey}-${award.seasonId}-${award.matchId ?? "season"}-${index}`}>
+                              Saison: {award.seasonName}
+                              {award.matchId ? (
+                                <>
+                                  {" · "}
+                                  <Link
+                                    href={`/admin/matches/${award.matchId}`}
+                                    className="text-red-300 hover:text-red-200"
+                                  >
+                                    {award.matchDate?.toLocaleDateString("de-DE", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                    }) ?? "Match"}
+                                  </Link>
+                                </>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-zinc-500">Noch nicht erhalten</p>
+                      )}
+                    </article>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
