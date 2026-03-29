@@ -701,7 +701,6 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
       concededInFirstHalf: boolean;
       concededInSecondHalf: boolean;
       concededInFirst15: boolean;
-      concededFrom89: boolean;
       isWinner: boolean;
       margin: number;
     }
@@ -711,7 +710,6 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
       concededInFirstHalf: false,
       concededInSecondHalf: false,
       concededInFirst15: false,
-      concededFrom89: false,
       isWinner: winningSide === "team_1",
       margin: winningSide === "team_1" ? finalMargin : 0,
     },
@@ -720,7 +718,6 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
       concededInFirstHalf: false,
       concededInSecondHalf: false,
       concededInFirst15: false,
-      concededFrom89: false,
       isWinner: winningSide === "team_2",
       margin: winningSide === "team_2" ? finalMargin : 0,
     },
@@ -742,10 +739,6 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
 
     if (goal.minute !== null && goal.minute <= 15) {
       defenseState.concededInFirst15 = true;
-    }
-
-    if (goal.minute !== null && goal.minute >= 89) {
-      defenseState.concededFrom89 = true;
     }
   }
 
@@ -855,17 +848,6 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
 
     // LATE_WALL wird bewusst nicht vergeben,
     // da weiterhin keine stabile zentrale Matchlängen-Definition hinterlegt ist.
-
-    if (!defenseState.concededFrom89) {
-      addTeamBadgeForParticipants(
-        pendingBadges,
-        participantRows,
-        teamSide,
-        match.seasonId,
-        BADGE_KEYS.LAST_MINUTE_DEFENSE,
-        matchId
-      );
-    }
   });
 
   for (const [playerId, goalCount] of goalCountByPlayer.entries()) {

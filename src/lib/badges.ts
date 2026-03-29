@@ -70,7 +70,6 @@ export const BADGE_KEYS = {
   // Zeit
   EARLY_WALL: "early_wall",
   LATE_WALL: "late_wall",
-  LAST_MINUTE_DEFENSE: "last_minute_defense",
 
   // Serien
   CLEAN_SHEET_STREAK_2: "clean_sheet_streak_2",
@@ -384,12 +383,6 @@ export const BADGE_META_BY_KEY: Record<BadgeKey, BadgeMeta> = {
     emoji: "🧲",
     category: "Defense",
     description: "In der Schlussphase ohne Gegentor geblieben.",
-  },
-  last_minute_defense: {
-    label: "Hinten raus dicht",
-    emoji: "🚧",
-    category: "Defense",
-    description: "Ab Minute 89 kein Gegentor kassiert.",
   },
   clean_sheet_streak_2: {
     label: "Unüberwindbar",
