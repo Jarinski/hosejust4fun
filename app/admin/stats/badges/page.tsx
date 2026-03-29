@@ -3,6 +3,7 @@ import { asc, count, desc, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { playerBadges, players, seasons } from "@/src/db/schema";
 import { BADGE_CATEGORY_ORDER, BadgeMeta, getBadgeMeta, getBadgeRarity } from "@/src/lib/badges";
+import { isMissingRelationError } from "@/src/lib/dbErrors";
 
 type BadgeStatsPageProps = {
   searchParams: Promise<{ seasonId?: string | string[] }>;
@@ -55,42 +56,52 @@ export default async function BadgeStatsPage({ searchParams }: BadgeStatsPagePro
   const validSeasonId = selectedSeason?.id;
   const seasonFilter = validSeasonId ? eq(playerBadges.seasonId, validSeasonId) : undefined;
 
-  const [hallOfFameRows, badgeDistributionRows, badgeOwnerRows] = await Promise.all([
-    db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-        badgeCount: count(playerBadges.id),
-      })
-      .from(playerBadges)
-      .innerJoin(players, eq(playerBadges.playerId, players.id))
-      .where(seasonFilter)
-      .groupBy(players.id, players.name)
-      .orderBy(desc(count(playerBadges.id)), asc(players.name)),
+  let hallOfFameRows: Array<{ playerId: number; playerName: string; badgeCount: number }> = [];
+  let badgeDistributionRows: Array<{ badgeKey: string; badgeCount: number }> = [];
+  let badgeOwnerRows: BadgeOwnerRow[] = [];
 
-    db
-      .select({
-        badgeKey: playerBadges.badgeKey,
-        badgeCount: count(playerBadges.id),
-      })
-      .from(playerBadges)
-      .where(seasonFilter)
-      .groupBy(playerBadges.badgeKey),
+  try {
+    [hallOfFameRows, badgeDistributionRows, badgeOwnerRows] = await Promise.all([
+      db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+          badgeCount: count(playerBadges.id),
+        })
+        .from(playerBadges)
+        .innerJoin(players, eq(playerBadges.playerId, players.id))
+        .where(seasonFilter)
+        .groupBy(players.id, players.name)
+        .orderBy(desc(count(playerBadges.id)), asc(players.name)),
 
-    db
-      .select({
-        badgeKey: playerBadges.badgeKey,
-        playerId: players.id,
-        playerName: players.name,
-        seasonId: seasons.id,
-        seasonName: seasons.name,
-      })
-      .from(playerBadges)
-      .innerJoin(players, eq(playerBadges.playerId, players.id))
-      .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
-      .where(seasonFilter)
-      .orderBy(asc(playerBadges.badgeKey), asc(players.name), desc(seasons.id)),
-  ]);
+      db
+        .select({
+          badgeKey: playerBadges.badgeKey,
+          badgeCount: count(playerBadges.id),
+        })
+        .from(playerBadges)
+        .where(seasonFilter)
+        .groupBy(playerBadges.badgeKey),
+
+      db
+        .select({
+          badgeKey: playerBadges.badgeKey,
+          playerId: players.id,
+          playerName: players.name,
+          seasonId: seasons.id,
+          seasonName: seasons.name,
+        })
+        .from(playerBadges)
+        .innerJoin(players, eq(playerBadges.playerId, players.id))
+        .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+        .where(seasonFilter)
+        .orderBy(asc(playerBadges.badgeKey), asc(players.name), desc(seasons.id)),
+    ]);
+  } catch (error) {
+    if (!isMissingRelationError(error, "player_badges")) {
+      throw error;
+    }
+  }
 
   const hallOfFame: HallOfFameEntry[] = [...hallOfFameRows].sort((a, b) => {
     if (b.badgeCount !== a.badgeCount) {

@@ -13,6 +13,7 @@ import {
 } from "@/src/db/schema";
 import { getAdminSession, requireAdminInAction } from "@/src/lib/auth";
 import { BADGE_CATEGORY_ORDER, getBadgeMeta } from "@/src/lib/badges";
+import { isMissingRelationError } from "@/src/lib/dbErrors";
 import { isRainLikeWeather, isSunnyLikeWeather } from "@/src/lib/weatherIcons";
 
 type PlayerDetailPageProps = {
@@ -589,17 +590,27 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     .orderBy(desc(matches.matchDate), desc(matches.id))
     .limit(10);
 
-  const awardedBadgeRows: PlayerBadgeRow[] = await db
-    .select({
-      badgeKey: playerBadges.badgeKey,
-      seasonId: playerBadges.seasonId,
-      seasonName: seasons.name,
-      matchId: playerBadges.matchId,
-      createdAt: playerBadges.createdAt,
-    })
-    .from(playerBadges)
-    .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
-    .where(eq(playerBadges.playerId, playerId));
+  const awardedBadgeRows: PlayerBadgeRow[] = await (async () => {
+    try {
+      return await db
+        .select({
+          badgeKey: playerBadges.badgeKey,
+          seasonId: playerBadges.seasonId,
+          seasonName: seasons.name,
+          matchId: playerBadges.matchId,
+          createdAt: playerBadges.createdAt,
+        })
+        .from(playerBadges)
+        .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+        .where(eq(playerBadges.playerId, playerId));
+    } catch (error) {
+      if (isMissingRelationError(error, "player_badges")) {
+        return [];
+      }
+
+      throw error;
+    }
+  })();
 
   const weatherMatches = await db
     .select({

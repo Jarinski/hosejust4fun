@@ -3,6 +3,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { playerBadges, players, seasons } from "@/src/db/schema";
 import { BADGE_META_BY_KEY, getBadgeMeta, getBadgeRarity } from "@/src/lib/badges";
+import { isMissingRelationError } from "@/src/lib/dbErrors";
 
 type BadgeDetailPageProps = {
   params: Promise<{ badgeKey: string }>;
@@ -56,28 +57,43 @@ export default async function BadgeDetailPage({ params, searchParams }: BadgeDet
     ? and(eq(playerBadges.badgeKey, badgeKey), eq(playerBadges.seasonId, validSeasonId))
     : eq(playerBadges.badgeKey, badgeKey);
 
-  const [metricsRows, ownerRows] = await Promise.all([
-    db
-      .select({
-        totalAwards: sql<number>`count(*)`,
-        ownerCount: sql<number>`count(distinct ${playerBadges.playerId})`,
-      })
-      .from(playerBadges)
-      .where(badgeFilter),
-    db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-        seasonId: seasons.id,
-        seasonName: seasons.name,
-        matchId: playerBadges.matchId,
-      })
-      .from(playerBadges)
-      .innerJoin(players, eq(playerBadges.playerId, players.id))
-      .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
-      .where(badgeFilter)
-      .orderBy(desc(seasons.startDate), desc(seasons.id), asc(players.name)),
-  ]);
+  let metricsRows: Array<{ totalAwards: number; ownerCount: number }> = [];
+  let ownerRows: Array<{
+    playerId: number;
+    playerName: string;
+    seasonId: number;
+    seasonName: string;
+    matchId: number | null;
+  }> = [];
+
+  try {
+    [metricsRows, ownerRows] = await Promise.all([
+      db
+        .select({
+          totalAwards: sql<number>`count(*)`,
+          ownerCount: sql<number>`count(distinct ${playerBadges.playerId})`,
+        })
+        .from(playerBadges)
+        .where(badgeFilter),
+      db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+          seasonId: seasons.id,
+          seasonName: seasons.name,
+          matchId: playerBadges.matchId,
+        })
+        .from(playerBadges)
+        .innerJoin(players, eq(playerBadges.playerId, players.id))
+        .innerJoin(seasons, eq(playerBadges.seasonId, seasons.id))
+        .where(badgeFilter)
+        .orderBy(desc(seasons.startDate), desc(seasons.id), asc(players.name)),
+    ]);
+  } catch (error) {
+    if (!isMissingRelationError(error, "player_badges")) {
+      throw error;
+    }
+  }
 
   const totalAwards = Number(metricsRows[0]?.totalAwards ?? 0);
   const ownerCount = Number(metricsRows[0]?.ownerCount ?? 0);
