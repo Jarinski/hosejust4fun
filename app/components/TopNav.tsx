@@ -10,12 +10,12 @@ type TopNavProps = {
 const publicNavItems = [
   { href: "/", label: "Dashboard" },
   { href: "/spieltag", label: "Spieltag" },
+  { href: "/stats/players", label: "Spielerprofile" },
   { href: "/stats", label: "Statistiken" },
 ] as const;
 
 const adminNavItems = [
   { href: "/admin/matches", label: "Matches" },
-  { href: "/stats/players", label: "Spieler" },
 ] as const;
 
 export function TopNav({ isAdmin }: TopNavProps) {
