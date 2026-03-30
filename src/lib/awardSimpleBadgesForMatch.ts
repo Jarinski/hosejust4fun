@@ -286,19 +286,23 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
 
   let consolationGoalEventId: number | null = null;
 
-  if (losingSide !== null && losingSideFinalGoals > 0) {
-    for (const state of scoreStates) {
-      const scoringTeamAfter =
-        losingSide === "team_1" ? state.team1After : state.team2After;
+  if (losingSide !== null && finalMargin >= 2 && losingSideFinalGoals === 1) {
+    for (let i = scoreStates.length - 1; i >= 0; i -= 1) {
+      const state = scoreStates[i];
 
-      if (
-        !state.goal.isOwnGoal &&
-        state.goal.teamSide === losingSide &&
-        scoringTeamAfter === losingSideFinalGoals
-      ) {
-        consolationGoalEventId = state.goal.id;
-        break;
+      if (state.goal.isOwnGoal || state.goal.teamSide !== losingSide) {
+        continue;
       }
+
+      const losingTeamAfter = losingSide === "team_1" ? state.team1After : state.team2After;
+      const winningTeamAfter = losingSide === "team_1" ? state.team2After : state.team1After;
+      const loserStillBehindAfterGoal = losingTeamAfter < winningTeamAfter;
+
+      if (loserStillBehindAfterGoal) {
+        consolationGoalEventId = state.goal.id;
+      }
+
+      break;
     }
   }
 
