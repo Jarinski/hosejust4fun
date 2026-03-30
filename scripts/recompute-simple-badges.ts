@@ -1,12 +1,15 @@
 import dotenv from "dotenv";
 import { asc } from "drizzle-orm";
-import { db } from "../src/db";
-import { matches } from "../src/db/schema";
-import { awardSimpleBadgesForMatch } from "../src/lib/awardSimpleBadgesForMatch";
 
 dotenv.config({ path: ".env.local" });
 
 async function main() {
+  const [{ db }, { matches }, { awardSimpleBadgesForMatch }] = await Promise.all([
+    import("../src/db"),
+    import("../src/db/schema"),
+    import("../src/lib/awardSimpleBadgesForMatch"),
+  ]);
+
   console.log("[start] Recompute simple match badges...");
 
   const matchRows = await db
