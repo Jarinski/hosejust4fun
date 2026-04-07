@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { players } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
@@ -27,26 +28,25 @@ export default async function NewPlayerPage({
       redirect("/admin/players/new?error=1");
     }
 
-    const insertedPlayers = await (async () => {
+    const newPlayerId = await (async () => {
       try {
-        return await db
-          .insert(players)
-          .values({
-            name,
-            isGuest,
-          })
-          .returning({ id: players.id });
+        const result = await db.execute(sql`
+          insert into "players" ("name", "is_guest")
+          values (${name}, ${isGuest})
+          returning "id"
+        `);
+
+        return Number((result as { rows?: Array<{ id?: number }> }).rows?.[0]?.id) || null;
       } catch {
-        return await db
-          .insert(players)
-          .values({
-            name,
-          })
-          .returning({ id: players.id });
+        const result = await db.execute(sql`
+          insert into "players" ("name")
+          values (${name})
+          returning "id"
+        `);
+
+        return Number((result as { rows?: Array<{ id?: number }> }).rows?.[0]?.id) || null;
       }
     })();
-
-    const newPlayerId = insertedPlayers[0]?.id;
 
     if (!newPlayerId) {
       redirect("/stats/players");
