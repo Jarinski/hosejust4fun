@@ -39,13 +39,22 @@ export default async function NewPlayerPage({
           })
           .returning({ id: players.id });
       } catch {
-        return await db
-          .insert(players)
-          .values({
-            name,
-            isGoalkeeper,
-          })
-          .returning({ id: players.id });
+        try {
+          return await db
+            .insert(players)
+            .values({
+              name,
+              isGoalkeeper,
+            })
+            .returning({ id: players.id });
+        } catch {
+          return await db
+            .insert(players)
+            .values({
+              name,
+            })
+            .returning({ id: players.id });
+        }
       }
     })();
 
