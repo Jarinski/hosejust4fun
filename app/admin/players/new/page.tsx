@@ -22,18 +22,32 @@ export default async function NewPlayerPage({
     const nameRaw = formData.get("name");
     const name = String(nameRaw ?? "").trim();
     const isGoalkeeper = formData.get("isGoalkeeper") === "on";
+    const isGuest = formData.get("isGuest") === "on";
 
     if (!name) {
       redirect("/admin/players/new?error=1");
     }
 
-    const insertedPlayers = await db
-      .insert(players)
-      .values({
-        name,
-        isGoalkeeper,
-      })
-      .returning({ id: players.id });
+    const insertedPlayers = await (async () => {
+      try {
+        return await db
+          .insert(players)
+          .values({
+            name,
+            isGoalkeeper,
+            isGuest,
+          })
+          .returning({ id: players.id });
+      } catch {
+        return await db
+          .insert(players)
+          .values({
+            name,
+            isGoalkeeper,
+          })
+          .returning({ id: players.id });
+      }
+    })();
 
     const newPlayerId = insertedPlayers[0]?.id;
 
@@ -73,6 +87,11 @@ export default async function NewPlayerPage({
           <label className="flex items-center gap-2">
             <input type="checkbox" name="isGoalkeeper" className="h-4 w-4 accent-zinc-900" />
             <span className="text-sm text-zinc-700">Torhüter</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="isGuest" className="h-4 w-4 accent-zinc-900" />
+            <span className="text-sm text-zinc-700">Gastspieler</span>
           </label>
 
           <button

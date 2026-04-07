@@ -19,6 +19,7 @@ export const players = pgTable("players", {
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true),
   isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
+  isGuest: boolean("is_guest").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

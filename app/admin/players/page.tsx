@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { requireAdmin } from "@/src/lib/auth";
 
 export default async function PlayersPage() {
-  redirect("/stats/players");
+  await requireAdmin("/admin/players");
+  redirect("/admin/players/new");
 }

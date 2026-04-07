@@ -62,6 +62,11 @@ const publicStatsPages = [
     description: "Vergleich je Spieler zwischen Legacy- und modernen Daten",
   },
   {
+    title: "Gastspieler",
+    href: "/stats/guests",
+    description: "Eigene Statistikseite nur für Gastspieler",
+  },
+  {
     title: "Kombinierte Statistiken",
     href: "/stats/combined",
     description: "Gesamttabelle mit Legacy + Modern pro Spielername",

@@ -339,6 +339,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
           id: players.id,
           name: players.name,
           isGoalkeeper: players.isGoalkeeper,
+          isGuest: players.isGuest,
         })
         .from(players)
         .where(eq(players.id, playerId))
@@ -357,6 +358,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       return legacyRows.map((row) => ({
         ...row,
         isGoalkeeper: false,
+        isGuest: false,
       }));
     }
   })();
@@ -1007,15 +1009,21 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
     }
 
     const isGoalkeeper = formData.get("isGoalkeeper") === "on";
+    const isGuest = formData.get("isGuest") === "on";
 
     try {
       await db
         .update(players)
-        .set({ name, isGoalkeeper })
+        .set({ name, isGoalkeeper, isGuest })
         .where(eq(players.id, targetPlayerId));
     } catch {
-      // Fallback für Umgebungen ohne is_goalkeeper-Spalte.
-      await db.update(players).set({ name }).where(eq(players.id, targetPlayerId));
+      try {
+        // Fallback für Umgebungen ohne is_guest-Spalte.
+        await db.update(players).set({ name, isGoalkeeper }).where(eq(players.id, targetPlayerId));
+      } catch {
+        // Fallback für Umgebungen ohne is_goalkeeper-Spalte.
+        await db.update(players).set({ name }).where(eq(players.id, targetPlayerId));
+      }
     }
 
     redirect(`/admin/players/${targetPlayerId}?updated=1`);
@@ -1074,7 +1082,7 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
         <h1 className="mb-4 text-2xl font-semibold">{player.name}</h1>
 
         <p className="mb-4 inline-flex rounded-full border border-zinc-300 bg-stone-50 px-3 py-1 text-xs font-medium uppercase tracking-wider text-zinc-600">
-          {player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
+          {player.isGuest ? "Gastspieler" : player.isGoalkeeper ? "Torhüter" : "Feldspieler"}
         </p>
 
         <section className="mb-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4 sm:p-5">
@@ -1157,6 +1165,16 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
                   className="h-4 w-4 accent-zinc-900"
                 />
                 Torhüter
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  name="isGuest"
+                  defaultChecked={player.isGuest}
+                  className="h-4 w-4 accent-zinc-900"
+                />
+                Gastspieler
               </label>
 
               <button

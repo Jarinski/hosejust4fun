@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/src/db";
 import {
@@ -39,41 +39,83 @@ type CombinedPlayerRow = {
 };
 
 async function getModernPlayerStats(): Promise<ModernPlayerRow[]> {
-  const [allPlayers, gamesByPlayer, goalsByPlayer, assistsByPlayer] = await Promise.all([
-    db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-      })
-      .from(players)
-      .orderBy(asc(players.name)),
-    db
-      .select({
-        playerId: players.id,
-        games: sql<number>`count(${matchParticipants.id})`,
-      })
-      .from(matchParticipants)
-      .innerJoin(players, eq(matchParticipants.playerId, players.id))
-      .groupBy(players.id),
-    db
-      .select({
-        playerId: players.id,
-        goals: sql<number>`count(${goalEvents.id})`,
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-      .where(eq(goalEvents.isOwnGoal, false))
-      .groupBy(players.id),
-    db
-      .select({
-        playerId: players.id,
-        assists: sql<number>`count(${goalEvents.id})`,
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-      .where(eq(goalEvents.isOwnGoal, false))
-      .groupBy(players.id),
-  ]);
+  const [allPlayers, gamesByPlayer, goalsByPlayer, assistsByPlayer] = await (async () => {
+    try {
+      return await Promise.all([
+        db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+          })
+          .from(players)
+          .where(eq(players.isGuest, false))
+          .orderBy(asc(players.name)),
+        db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .where(eq(players.isGuest, false))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            goals: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGuest, false)))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            assists: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+          .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGuest, false)))
+          .groupBy(players.id),
+      ]);
+    } catch {
+      return await Promise.all([
+        db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+          })
+          .from(players)
+          .orderBy(asc(players.name)),
+        db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            goals: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .where(eq(goalEvents.isOwnGoal, false))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            assists: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+          .where(eq(goalEvents.isOwnGoal, false))
+          .groupBy(players.id),
+      ]);
+    }
+  })();
 
   const modernStatsMap = new Map<number, ModernPlayerRow>();
 

@@ -37,45 +37,95 @@ type PublicPlayerRow = ModernPlayerRow & {
   totalPoints: number;
 };
 
-async function getModernPlayerStats(): Promise<ModernPlayerRow[]> {
-  const [allPlayers, gamesByPlayer, goalsByPlayer, assistsByPlayer] = await Promise.all([
-    db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-      })
-      .from(players)
-      .orderBy(asc(players.name)),
+async function getModernPlayerStats(isGuest: boolean): Promise<ModernPlayerRow[]> {
+  const loadWithGuestFilter = async () => {
+    return Promise.all([
+      db
+        .select({
+          playerId: players.id,
+          playerName: players.name,
+        })
+        .from(players)
+        .where(eq(players.isGuest, isGuest))
+        .orderBy(asc(players.name)),
 
-    db
-      .select({
-        playerId: players.id,
-        games: sql<number>`count(${matchParticipants.id})`,
-      })
-      .from(matchParticipants)
-      .innerJoin(players, eq(matchParticipants.playerId, players.id))
-      .groupBy(players.id),
+      db
+        .select({
+          playerId: players.id,
+          games: sql<number>`count(${matchParticipants.id})`,
+        })
+        .from(matchParticipants)
+        .innerJoin(players, eq(matchParticipants.playerId, players.id))
+        .where(eq(players.isGuest, isGuest))
+        .groupBy(players.id),
 
-    db
-      .select({
-        playerId: players.id,
-        goals: sql<number>`count(${goalEvents.id})`,
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-      .where(eq(goalEvents.isOwnGoal, false))
-      .groupBy(players.id),
+      db
+        .select({
+          playerId: players.id,
+          goals: sql<number>`count(${goalEvents.id})`,
+        })
+        .from(goalEvents)
+        .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+        .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGuest, isGuest)))
+        .groupBy(players.id),
 
-    db
-      .select({
-        playerId: players.id,
-        assists: sql<number>`count(${goalEvents.id})`,
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-      .where(and(eq(goalEvents.isOwnGoal, false)))
-      .groupBy(players.id),
-  ]);
+      db
+        .select({
+          playerId: players.id,
+          assists: sql<number>`count(${goalEvents.id})`,
+        })
+        .from(goalEvents)
+        .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+        .where(and(eq(goalEvents.isOwnGoal, false), eq(players.isGuest, isGuest)))
+        .groupBy(players.id),
+    ]);
+  };
+
+  const [allPlayers, gamesByPlayer, goalsByPlayer, assistsByPlayer] = await (async () => {
+    try {
+      return await loadWithGuestFilter();
+    } catch {
+      if (isGuest) {
+        return [[], [], [], []] as const;
+      }
+
+      return Promise.all([
+        db
+          .select({
+            playerId: players.id,
+            playerName: players.name,
+          })
+          .from(players)
+          .orderBy(asc(players.name)),
+        db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            goals: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+          .where(eq(goalEvents.isOwnGoal, false))
+          .groupBy(players.id),
+        db
+          .select({
+            playerId: players.id,
+            assists: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+          .where(and(eq(goalEvents.isOwnGoal, false)))
+          .groupBy(players.id),
+      ]);
+    }
+  })();
 
   const statsByPlayer = new Map<number, ModernPlayerRow>();
 
@@ -143,7 +193,7 @@ export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageP
       })
       .from(legacyPlayerCareerStats)
       .orderBy(asc(legacyPlayerCareerStats.playerName)),
-    getModernPlayerStats(),
+    getModernPlayerStats(false),
   ]);
 
   const sortedLegacyStats = [...legacyStats].sort((a, b) => {
