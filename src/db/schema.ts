@@ -124,6 +124,28 @@ export const playerBadges = pgTable(
   })
 );
 
+export const playerPlanningProfiles = pgTable(
+  "player_planning_profiles",
+  {
+    id: serial("id").primaryKey(),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id),
+    isRunner: boolean("is_runner").notNull().default(false),
+    isDefensive: boolean("is_defensive").notNull().default(false),
+    isOffensive: boolean("is_offensive").notNull().default(false),
+    isWeakPlayer: boolean("is_weak_player").notNull().default(false),
+    isStarPlayer: boolean("is_star_player").notNull().default(false),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    uniquePlayerId: uniqueIndex("player_planning_profiles_player_id_uq").on(table.playerId),
+    playerIdIdx: index("player_planning_profiles_player_id_idx").on(table.playerId),
+  })
+);
+
 export const matchWeather = pgTable("match_weather", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id")
