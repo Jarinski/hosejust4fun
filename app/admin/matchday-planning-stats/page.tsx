@@ -45,6 +45,26 @@ function getPlayerTypeLabel(playerType: PlayerType): string {
   return "Solider Spieler";
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getBalanceScoreLabel(score: number): string {
+  if (score >= 85) return "Topspieler";
+  if (score >= 70) return "Stark";
+  if (score >= 50) return "Solide";
+  if (score >= 40) return "Wackelig";
+  return "Ausbaubereich";
+}
+
+function getBalanceScoreLabelClassName(score: number): string {
+  if (score >= 85) return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (score >= 70) return "border-lime-300 bg-lime-50 text-lime-800";
+  if (score >= 50) return "border-zinc-300 bg-zinc-50 text-zinc-700";
+  if (score >= 40) return "border-amber-300 bg-amber-50 text-amber-800";
+  return "border-orange-300 bg-orange-50 text-orange-800";
+}
+
 export default async function MatchdayPlanningStatsPage({ searchParams }: PlanningPageProps) {
   await requireAdmin("/admin/matchday-planning-stats");
 
@@ -236,14 +256,23 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     entry.teamGoalsPerGame = entry.games > 0 ? entry.teamGoals / entry.games : 0;
     entry.scorerPerGame = entry.games > 0 ? entry.scorers / entry.games : 0;
     const playerType = getPlayerType(entry.profile);
-    const roleAdjustment = playerType === "star" ? 2 : playerType === "development" ? -1 : 0;
-    entry.balanceScore =
-      entry.winRate * 0.45 +
-      entry.goalsPerGame * 22 +
-      entry.assistsPerGame * 16 +
-      entry.teamGoalsPerGame * 10 +
-      entry.mvps * 2 +
-      roleAdjustment;
+    const roleAdjustment = playerType === "star" ? 3 : playerType === "development" ? -3 : 0;
+
+    const winRate = entry.winRate / 100;
+    const gamesConfidence = Math.min(1, entry.games / 5);
+    const adjustedWinRate = winRate * gamesConfidence;
+
+    const winRatePoints = adjustedWinRate * 35;
+    const goalsPoints = clamp(entry.goalsPerGame / 2, 0, 1) * 25;
+    const assistsPoints = clamp(entry.assistsPerGame / 1.5, 0, 1) * 15;
+    const teamGoalsPoints = clamp(entry.teamGoalsPerGame / 5, 0, 1) * 15;
+    const mvpPoints = clamp(entry.mvps / 5, 0, 1) * 10;
+
+    entry.balanceScore = clamp(
+      winRatePoints + goalsPoints + assistsPoints + teamGoalsPoints + mvpPoints + roleAdjustment,
+      0,
+      100,
+    );
 
     return {
       playerId: player.id,
@@ -333,6 +362,13 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
                 <div className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-right">
                   <p className="text-[11px] uppercase tracking-wide text-zinc-500">Balance Score</p>
                   <p className="text-3xl font-bold leading-none text-zinc-900">{entry.balanceScore.toFixed(1)}</p>
+                  <p
+                    className={`mt-2 inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium ${getBalanceScoreLabelClassName(
+                      entry.balanceScore,
+                    )}`}
+                  >
+                    {getBalanceScoreLabel(entry.balanceScore)}
+                  </p>
                 </div>
               </div>
 
