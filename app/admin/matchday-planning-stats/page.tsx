@@ -31,6 +31,20 @@ type PlanningProfile = {
   notes: string | null;
 };
 
+type PlayerType = "star" | "solid" | "development";
+
+function getPlayerType(profile: PlanningProfile): PlayerType {
+  if (profile.isStarPlayer) return "star";
+  if (profile.isWeakPlayer) return "development";
+  return "solid";
+}
+
+function getPlayerTypeLabel(playerType: PlayerType): string {
+  if (playerType === "star") return "Sternspieler";
+  if (playerType === "development") return "Ausbauspieler";
+  return "Solider Spieler";
+}
+
 export default async function MatchdayPlanningStatsPage({ searchParams }: PlanningPageProps) {
   await requireAdmin("/admin/matchday-planning-stats");
 
@@ -46,7 +60,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
   const playerIds = playerRows.map((p) => p.id);
   const upcomingMondayIso = getUpcomingMondayIsoInBerlin();
 
-  const [participationRows, goalRows, assistRows, mvpRows, badgeRows, profileRows, nextMatchdayRows] = await Promise.all([
+  const [participationRows, goalRows, assistRows, mvpRows, badgeRows, profileRows, nextMatchdayRows, teamGoalRows] = await Promise.all([
     playerIds.length
       ? db
           .select({
@@ -120,6 +134,17 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       .from(matchdayParticipants)
       .innerJoin(matchdays, eq(matchdayParticipants.matchdayId, matchdays.id))
       .where(and(eq(matchdays.matchDate, upcomingMondayIso), eq(matchdayParticipants.isCanceled, false))),
+    playerIds.length
+      ? db
+          .select({
+            playerId: matchParticipants.playerId,
+            count: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(goalEvents, and(eq(goalEvents.matchId, matchParticipants.matchId), eq(goalEvents.teamSide, matchParticipants.teamSide)))
+          .where(inArray(matchParticipants.playerId, playerIds))
+          .groupBy(matchParticipants.playerId)
+      : Promise.resolve([] as Array<{ playerId: number; count: number }>),
   ]);
 
   const goalsByPlayerId = new Map(goalRows.map((row) => [row.playerId, Number(row.count) || 0]));
@@ -134,6 +159,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       .map((row) => [row.playerId as number, Number(row.count) || 0]),
   );
   const badgesByPlayerId = new Map(badgeRows.map((row) => [row.playerId, Number(row.count) || 0]));
+  const teamGoalsByPlayerId = new Map(teamGoalRows.map((row) => [row.playerId, Number(row.count) || 0]));
   const profileByPlayerId = new Map(profileRows.map((row) => [row.playerId, row]));
 
   const baseByPlayerId = new Map<
@@ -144,6 +170,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       draws: number;
       losses: number;
       goals: number;
+      teamGoals: number;
       assists: number;
       scorers: number;
       mvps: number;
@@ -151,6 +178,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       winRate: number;
       goalsPerGame: number;
       assistsPerGame: number;
+      teamGoalsPerGame: number;
       scorerPerGame: number;
       balanceScore: number;
       profile: PlanningProfile;
@@ -164,6 +192,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       draws: 0,
       losses: 0,
       goals: goalsByPlayerId.get(player.id) ?? 0,
+      teamGoals: teamGoalsByPlayerId.get(player.id) ?? 0,
       assists: assistsByPlayerId.get(player.id) ?? 0,
       scorers: 0,
       mvps: mvpsByPlayerId.get(player.id) ?? 0,
@@ -171,6 +200,7 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
       winRate: 0,
       goalsPerGame: 0,
       assistsPerGame: 0,
+      teamGoalsPerGame: 0,
       scorerPerGame: 0,
       balanceScore: 0,
       profile: profileByPlayerId.get(player.id) ?? {
@@ -203,55 +233,32 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     entry.winRate = entry.games > 0 ? (entry.wins / entry.games) * 100 : 0;
     entry.goalsPerGame = entry.games > 0 ? entry.goals / entry.games : 0;
     entry.assistsPerGame = entry.games > 0 ? entry.assists / entry.games : 0;
+    entry.teamGoalsPerGame = entry.games > 0 ? entry.teamGoals / entry.games : 0;
     entry.scorerPerGame = entry.games > 0 ? entry.scorers / entry.games : 0;
+    const playerType = getPlayerType(entry.profile);
+    const roleAdjustment = playerType === "star" ? 2 : playerType === "development" ? -1 : 0;
     entry.balanceScore =
-      entry.mvps * 3 +
-      entry.scorerPerGame * 2 +
-      entry.winRate / 20 +
-      (entry.profile.isStarPlayer ? 1.5 : 0) -
-      (entry.profile.isWeakPlayer ? 1.5 : 0);
+      entry.winRate * 0.45 +
+      entry.goalsPerGame * 22 +
+      entry.assistsPerGame * 16 +
+      entry.teamGoalsPerGame * 10 +
+      entry.mvps * 2 +
+      roleAdjustment;
 
     return {
       playerId: player.id,
       playerName: player.name,
+      playerType,
+      playerTypeLabel: getPlayerTypeLabel(playerType),
       ...entry,
     };
   });
 
   const plannedParticipantIdSet = new Set(nextMatchdayRows.map((row) => row.playerId));
-  const plannedParticipantStats = playerStats.filter((entry) => plannedParticipantIdSet.has(entry.playerId));
 
-  function buildSectionStats(source: typeof playerStats) {
-    const topMvpPlayers = [...source]
-      .sort((a, b) => b.mvps - a.mvps || b.scorers - a.scorers || a.playerName.localeCompare(b.playerName, "de"))
-      .slice(0, 5)
-      .filter((entry) => entry.mvps > 0);
-
-    const topScorerPlayers = [...source]
-      .sort((a, b) => b.scorers - a.scorers || b.goals - a.goals || a.playerName.localeCompare(b.playerName, "de"))
-      .slice(0, 5)
-      .filter((entry) => entry.scorers > 0);
-
-    return {
-      countPlayers: source.length,
-      stars: source.filter((entry) => entry.profile.isStarPlayer).length,
-      needsSupport: source.filter((entry) => entry.profile.isWeakPlayer).length,
-      offensive: source.filter((entry) => entry.profile.isOffensive).length,
-      defensive: source.filter((entry) => entry.profile.isDefensive).length,
-      avgBalanceScore:
-        source.length > 0 ? source.reduce((sum, entry) => sum + entry.balanceScore, 0) / source.length : 0,
-      topMvpPlayers,
-      topScorerPlayers,
-    };
-  }
-
-  const allPlayersStats = buildSectionStats(playerStats);
-  const plannedPlayersStats = buildSectionStats(plannedParticipantStats);
-
-  const bestWinratePlayers = [...playerStats]
-    .filter((entry) => entry.games >= 3)
-    .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins || a.playerName.localeCompare(b.playerName, "de"))
-    .slice(0, 5);
+  const orderedPlayerStats = [...playerStats].sort(
+    (a, b) => b.balanceScore - a.balanceScore || b.winRate - a.winRate || a.playerName.localeCompare(b.playerName, "de"),
+  );
 
   async function savePlanningProfile(formData: FormData) {
     "use server";
@@ -264,6 +271,10 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     }
 
     const notesValue = String(formData.get("notes") ?? "").trim();
+    const selectedPlayerType = String(formData.get("playerType") ?? "solid") as PlayerType;
+
+    const isStarPlayer = selectedPlayerType === "star";
+    const isWeakPlayer = selectedPlayerType === "development";
 
     await db
       .insert(playerPlanningProfiles)
@@ -272,8 +283,8 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
         isRunner: formData.get("isRunner") === "on",
         isDefensive: formData.get("isDefensive") === "on",
         isOffensive: formData.get("isOffensive") === "on",
-        isWeakPlayer: formData.get("isWeakPlayer") === "on",
-        isStarPlayer: formData.get("isStarPlayer") === "on",
+        isWeakPlayer,
+        isStarPlayer,
         notes: notesValue.length > 0 ? notesValue : null,
       })
       .onConflictDoUpdate({
@@ -282,8 +293,8 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
           isRunner: formData.get("isRunner") === "on",
           isDefensive: formData.get("isDefensive") === "on",
           isOffensive: formData.get("isOffensive") === "on",
-          isWeakPlayer: formData.get("isWeakPlayer") === "on",
-          isStarPlayer: formData.get("isStarPlayer") === "on",
+          isWeakPlayer,
+          isStarPlayer,
           notes: notesValue.length > 0 ? notesValue : null,
           updatedAt: new Date(),
         },
@@ -307,124 +318,86 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
         </p>
         {wasUpdated ? <p className="mt-2 text-sm text-green-700">Änderungen gespeichert.</p> : null}
 
-        <section className="mt-6 space-y-4">
-          {[
-            { title: "Alle Spieler", stats: allPlayersStats },
-            { title: "Geplante Teilnehmer nächster Spieltag", stats: plannedPlayersStats },
-          ].map((section) => (
-            <div key={section.title} className="rounded-2xl border border-zinc-300 bg-stone-50 p-4">
-              <h2 className="text-lg font-semibold">{section.title}</h2>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Anzahl Spieler: <strong>{section.stats.countPlayers}</strong></div>
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Sternspieler: <strong>{section.stats.stars}</strong></div>
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Brauchen stärkere Mitspieler: <strong>{section.stats.needsSupport}</strong></div>
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Ø Balance Score: <strong>{section.stats.avgBalanceScore.toFixed(2)}</strong></div>
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Eher offensiv: <strong>{section.stats.offensive}</strong></div>
-                <div className="rounded-lg border border-zinc-300 bg-white p-3 text-sm">Eher defensiv: <strong>{section.stats.defensive}</strong></div>
+        <section className="mt-6 grid gap-4 lg:grid-cols-2">
+          {orderedPlayerStats.map((entry) => (
+            <article key={entry.playerId} className="rounded-2xl border border-zinc-300 bg-stone-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">{entry.playerName}</h2>
+                  {plannedParticipantIdSet.has(entry.playerId) ? (
+                    <p className="mt-1 inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">
+                      Geplant für nächsten Spieltag
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-right">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Balance Score</p>
+                  <p className="text-3xl font-bold leading-none text-zinc-900">{entry.balanceScore.toFixed(1)}</p>
+                </div>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                <article className="rounded-xl border border-zinc-300 bg-white p-3">
-                  <h3 className="text-sm font-semibold">Top-MVP-Spieler</h3>
-                  <ul className="mt-2 space-y-1 text-sm text-zinc-700">
-                    {section.stats.topMvpPlayers.length === 0
-                      ? <li>Keine Daten</li>
-                      : section.stats.topMvpPlayers.map((p) => <li key={`${section.title}-mvp-${p.playerId}`}>{p.playerName} · {p.mvps}</li>)}
-                  </ul>
-                </article>
-                <article className="rounded-xl border border-zinc-300 bg-white p-3">
-                  <h3 className="text-sm font-semibold">Top-Scorer</h3>
-                  <ul className="mt-2 space-y-1 text-sm text-zinc-700">
-                    {section.stats.topScorerPlayers.length === 0
-                      ? <li>Keine Daten</li>
-                      : section.stats.topScorerPlayers.map((p) => <li key={`${section.title}-scorer-${p.playerId}`}>{p.playerName} · {p.scorers}</li>)}
-                  </ul>
-                </article>
-                <article className="rounded-xl border border-zinc-300 bg-white p-3">
-                  <h3 className="text-sm font-semibold">Beste Winrate (mind. 3 Spiele)</h3>
-                  <ul className="mt-2 space-y-1 text-sm text-zinc-700">
-                    {bestWinratePlayers.length === 0 ? <li>Keine Daten</li> : bestWinratePlayers.map((p) => <li key={`wr-${p.playerId}`}>{p.playerName} · {p.winRate.toFixed(1)}%</li>)}
-                  </ul>
-                </article>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">
+                <div className="rounded-lg border border-zinc-300 bg-white p-2"><p className="text-xs text-zinc-500">Winrate</p><p className="font-semibold">{entry.winRate.toFixed(1)}%</p></div>
+                <div className="rounded-lg border border-zinc-300 bg-white p-2"><p className="text-xs text-zinc-500">Tore/Spiel</p><p className="font-semibold">{entry.goalsPerGame.toFixed(2)}</p></div>
+                <div className="rounded-lg border border-zinc-300 bg-white p-2"><p className="text-xs text-zinc-500">Assists/Spiel</p><p className="font-semibold">{entry.assistsPerGame.toFixed(2)}</p></div>
+                <div className="rounded-lg border border-zinc-300 bg-white p-2"><p className="text-xs text-zinc-500">Teamtore/Spiel</p><p className="font-semibold">{entry.teamGoalsPerGame.toFixed(2)}</p></div>
+                <div className="rounded-lg border border-zinc-300 bg-white p-2"><p className="text-xs text-zinc-500">MVP</p><p className="font-semibold">{entry.mvps}</p></div>
               </div>
-            </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-800">
+                  Rolle: {entry.playerTypeLabel}
+                </span>
+                {entry.profile.isRunner ? <span className="rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs">Runner</span> : null}
+                {entry.profile.isOffensive ? <span className="rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs">offensiv</span> : null}
+                {entry.profile.isDefensive ? <span className="rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs">defensiv</span> : null}
+              </div>
+
+              <form
+                action={async (formData) => {
+                  "use server";
+                  await savePlanningProfile(formData);
+                }}
+                className="mt-4 space-y-2 rounded-lg border border-zinc-300 bg-white p-3"
+              >
+                <input type="hidden" name="playerId" value={entry.playerId} />
+
+                <div className="grid gap-2 text-xs sm:grid-cols-2">
+                  <label className="flex items-center gap-2"><input type="checkbox" name="isRunner" defaultChecked={entry.profile.isRunner} /> Läufer</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" name="isDefensive" defaultChecked={entry.profile.isDefensive} /> eher defensiv</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" name="isOffensive" defaultChecked={entry.profile.isOffensive} /> eher offensiv</label>
+                </div>
+
+                <label className="block text-xs text-zinc-700">
+                  Spielertyp
+                  <select
+                    name="playerType"
+                    defaultValue={entry.playerType}
+                    className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm"
+                  >
+                    <option value="star">Sternspieler</option>
+                    <option value="solid">Solider Spieler</option>
+                    <option value="development">Ausbauspieler</option>
+                  </select>
+                </label>
+
+                <textarea
+                  name="notes"
+                  defaultValue={entry.profile.notes ?? ""}
+                  rows={2}
+                  placeholder="Interne Notiz"
+                  className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
+                />
+                <button
+                  type="submit"
+                  className="rounded-md border border-zinc-300 bg-stone-50 px-2 py-1 text-xs hover:border-zinc-500"
+                >
+                  Speichern
+                </button>
+              </form>
+            </article>
           ))}
         </section>
-
-        <div className="mt-6 overflow-x-auto rounded-xl border border-zinc-300 bg-white">
-          <table className="min-w-[1300px] w-full text-sm">
-            <thead className="bg-stone-50 text-zinc-700">
-              <tr>
-                <th className="px-3 py-2 text-left">Spieler</th>
-                <th className="px-3 py-2 text-left">Spiele</th>
-                <th className="px-3 py-2 text-left">Siege</th>
-                <th className="px-3 py-2 text-left">Niederlagen</th>
-                <th className="px-3 py-2 text-left">Unentschieden</th>
-                <th className="px-3 py-2 text-left">Winrate</th>
-                <th className="px-3 py-2 text-left">Tore</th>
-                <th className="px-3 py-2 text-left">Assists</th>
-                <th className="px-3 py-2 text-left">Scorer</th>
-                <th className="px-3 py-2 text-left">Tore/Spiel</th>
-                <th className="px-3 py-2 text-left">Assists/Spiel</th>
-                <th className="px-3 py-2 text-left">MVP</th>
-                <th className="px-3 py-2 text-left">Badges</th>
-                <th className="px-3 py-2 text-left">Balance Score (intern)</th>
-                <th className="px-3 py-2 text-left">Planungsprofil</th>
-              </tr>
-            </thead>
-            <tbody>
-              {playerStats.map((entry) => (
-                <tr key={entry.playerId} className="border-t border-zinc-300 align-top">
-                  <td className="px-3 py-2 font-medium">{entry.playerName}</td>
-                  <td className="px-3 py-2">{entry.games}</td>
-                  <td className="px-3 py-2">{entry.wins}</td>
-                  <td className="px-3 py-2">{entry.losses}</td>
-                  <td className="px-3 py-2">{entry.draws}</td>
-                  <td className="px-3 py-2">{entry.winRate.toFixed(1)}%</td>
-                  <td className="px-3 py-2">{entry.goals}</td>
-                  <td className="px-3 py-2">{entry.assists}</td>
-                  <td className="px-3 py-2">{entry.scorers}</td>
-                  <td className="px-3 py-2">{entry.goalsPerGame.toFixed(2)}</td>
-                  <td className="px-3 py-2">{entry.assistsPerGame.toFixed(2)}</td>
-                  <td className="px-3 py-2">{entry.mvps}</td>
-                  <td className="px-3 py-2">{entry.badges}</td>
-                  <td className="px-3 py-2">{entry.balanceScore.toFixed(2)}</td>
-                  <td className="px-3 py-2 min-w-[360px]">
-                    <form
-                      action={async (formData) => {
-                        "use server";
-                        await savePlanningProfile(formData);
-                      }}
-                      className="space-y-2 rounded-lg border border-zinc-300 bg-stone-50 p-2"
-                    >
-                      <input type="hidden" name="playerId" value={entry.playerId} />
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <label className="flex items-center gap-2"><input type="checkbox" name="isRunner" defaultChecked={entry.profile.isRunner} /> Läufer</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" name="isDefensive" defaultChecked={entry.profile.isDefensive} /> eher defensiv</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" name="isOffensive" defaultChecked={entry.profile.isOffensive} /> eher offensiv</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" name="isWeakPlayer" defaultChecked={entry.profile.isWeakPlayer} /> braucht stärkere Mitspieler</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" name="isStarPlayer" defaultChecked={entry.profile.isStarPlayer} /> Sternspieler</label>
-                      </div>
-                      <textarea
-                        name="notes"
-                        defaultValue={entry.profile.notes ?? ""}
-                        rows={2}
-                        placeholder="Interne Notiz"
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
-                      />
-                      <button
-                        type="submit"
-                        className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs hover:border-zinc-500"
-                      >
-                        Speichern
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
     </main>
   );
