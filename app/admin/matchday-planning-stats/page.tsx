@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import {
   goalEvents,
@@ -10,6 +10,8 @@ import {
   matches,
   playerBadges,
   playerPlanningProfiles,
+  matchdayTeamSuggestionPlayers,
+  matchdayTeamSuggestions,
   players,
 } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
@@ -32,6 +34,7 @@ type PlanningProfile = {
 };
 
 type PlayerType = "star" | "solid" | "development";
+type SuggestionTeamSide = "team_a" | "team_b";
 
 function getPlayerType(profile: PlanningProfile): PlayerType {
   if (profile.isStarPlayer) return "star";
@@ -63,6 +66,12 @@ function getBalanceScoreLabelClassName(score: number): string {
   if (score >= 50) return "border-zinc-300 bg-zinc-50 text-zinc-700";
   if (score >= 40) return "border-amber-300 bg-amber-50 text-amber-800";
   return "border-orange-300 bg-orange-50 text-orange-800";
+}
+
+function formatSuggestionDate(value: Date | string | null | undefined): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 export default async function MatchdayPlanningStatsPage({ searchParams }: PlanningPageProps) {
@@ -289,6 +298,75 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     (a, b) => b.balanceScore - a.balanceScore || b.winRate - a.winRate || a.playerName.localeCompare(b.playerName, "de"),
   );
 
+  const upcomingMatchday = await db
+    .select({ id: matchdays.id, matchDate: matchdays.matchDate })
+    .from(matchdays)
+    .where(eq(matchdays.matchDate, upcomingMondayIso))
+    .limit(1);
+
+  const upcomingMatchdayId = upcomingMatchday[0]?.id ?? null;
+
+  const suggestionCandidates = orderedPlayerStats.filter((entry) => plannedParticipantIdSet.has(entry.playerId));
+  const teamA: typeof suggestionCandidates = [];
+  const teamB: typeof suggestionCandidates = [];
+
+  suggestionCandidates.forEach((entry, index) => {
+    const round = Math.floor(index / 2);
+    const isEvenRound = round % 2 === 0;
+    if (isEvenRound) {
+      if (index % 2 === 0) teamA.push(entry);
+      else teamB.push(entry);
+      return;
+    }
+    if (index % 2 === 0) teamB.push(entry);
+    else teamA.push(entry);
+  });
+
+  const teamAScore = teamA.reduce((sum, p) => sum + p.balanceScore, 0);
+  const teamBScore = teamB.reduce((sum, p) => sum + p.balanceScore, 0);
+  const computedScoreDiff = Math.abs(teamAScore - teamBScore);
+
+  const latestStoredSuggestion = upcomingMatchdayId
+    ? await db
+        .select({
+          id: matchdayTeamSuggestions.id,
+          algorithmVersion: matchdayTeamSuggestions.algorithmVersion,
+          scoreDiff: matchdayTeamSuggestions.scoreDiff,
+          notes: matchdayTeamSuggestions.notes,
+          createdAt: matchdayTeamSuggestions.createdAt,
+        })
+        .from(matchdayTeamSuggestions)
+        .where(eq(matchdayTeamSuggestions.matchdayId, upcomingMatchdayId))
+        .orderBy(desc(matchdayTeamSuggestions.createdAt), desc(matchdayTeamSuggestions.id))
+        .limit(1)
+    : [];
+
+  const latestSuggestion = latestStoredSuggestion[0] ?? null;
+
+  const latestSuggestionPlayers = latestSuggestion
+    ? await db
+        .select({
+          playerId: matchdayTeamSuggestionPlayers.playerId,
+          teamSide: matchdayTeamSuggestionPlayers.teamSide,
+          balanceScoreAtCreation: matchdayTeamSuggestionPlayers.balanceScoreAtCreation,
+          playerRoleAtCreation: matchdayTeamSuggestionPlayers.playerRoleAtCreation,
+          isRunnerAtCreation: matchdayTeamSuggestionPlayers.isRunnerAtCreation,
+          isDefensiveAtCreation: matchdayTeamSuggestionPlayers.isDefensiveAtCreation,
+          isOffensiveAtCreation: matchdayTeamSuggestionPlayers.isOffensiveAtCreation,
+          playerName: players.name,
+        })
+        .from(matchdayTeamSuggestionPlayers)
+        .innerJoin(players, eq(matchdayTeamSuggestionPlayers.playerId, players.id))
+        .where(eq(matchdayTeamSuggestionPlayers.suggestionId, latestSuggestion.id))
+    : [];
+
+  const latestTeamA = latestSuggestionPlayers
+    .filter((p) => p.teamSide === "team_a")
+    .sort((a, b) => Number(b.balanceScoreAtCreation) - Number(a.balanceScoreAtCreation) || a.playerName.localeCompare(b.playerName, "de"));
+  const latestTeamB = latestSuggestionPlayers
+    .filter((p) => p.teamSide === "team_b")
+    .sort((a, b) => Number(b.balanceScoreAtCreation) - Number(a.balanceScoreAtCreation) || a.playerName.localeCompare(b.playerName, "de"));
+
   async function savePlanningProfile(formData: FormData) {
     "use server";
 
@@ -328,6 +406,49 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
           updatedAt: new Date(),
         },
       });
+
+    revalidatePath("/admin/matchday-planning-stats");
+  }
+
+  async function saveTeamSuggestion() {
+    "use server";
+
+    await requireAdminInAction();
+
+    if (!upcomingMatchdayId) {
+      throw new Error("Kein nächster Spieltag gefunden.");
+    }
+
+    const inserted = await db
+      .insert(matchdayTeamSuggestions)
+      .values({
+        matchdayId: upcomingMatchdayId,
+        algorithmVersion: "v1_snake_draft",
+        scoreDiff: computedScoreDiff.toFixed(2),
+      })
+      .returning({ id: matchdayTeamSuggestions.id });
+
+    const suggestionId = inserted[0]?.id;
+    if (!suggestionId) {
+      throw new Error("Teamvorschlag konnte nicht gespeichert werden.");
+    }
+
+    const rows = [...teamA.map((player) => ({ player, teamSide: "team_a" as SuggestionTeamSide })), ...teamB.map((player) => ({ player, teamSide: "team_b" as SuggestionTeamSide }))];
+
+    if (rows.length > 0) {
+      await db.insert(matchdayTeamSuggestionPlayers).values(
+        rows.map(({ player, teamSide }) => ({
+          suggestionId,
+          playerId: player.playerId,
+          teamSide,
+          balanceScoreAtCreation: player.balanceScore.toFixed(2),
+          playerRoleAtCreation: player.playerType,
+          isRunnerAtCreation: player.profile.isRunner,
+          isDefensiveAtCreation: player.profile.isDefensive,
+          isOffensiveAtCreation: player.profile.isOffensive,
+        })),
+      );
+    }
 
     revalidatePath("/admin/matchday-planning-stats");
   }
@@ -433,6 +554,86 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
               </form>
             </article>
           ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-zinc-300 bg-stone-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Teamvorschlag (berechnet)</h2>
+              <p className="text-sm text-zinc-600">Algorithmus: v1_snake_draft</p>
+            </div>
+            <form action={saveTeamSuggestion}>
+              <button type="submit" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm hover:border-zinc-500">
+                Vorschlag speichern
+              </button>
+            </form>
+          </div>
+
+          <p className="mt-2 text-sm text-zinc-700">Score-Differenz: {computedScoreDiff.toFixed(2)}</p>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <article className="rounded-xl border border-zinc-300 bg-white p-3">
+              <h3 className="font-medium">Team A</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                {teamA.map((player) => (
+                  <li key={`a-${player.playerId}`} className="flex justify-between gap-2">
+                    <span>{player.playerName}</span>
+                    <span className="text-zinc-600">{player.balanceScore.toFixed(1)}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+            <article className="rounded-xl border border-zinc-300 bg-white p-3">
+              <h3 className="font-medium">Team B</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                {teamB.map((player) => (
+                  <li key={`b-${player.playerId}`} className="flex justify-between gap-2">
+                    <span>{player.playerName}</span>
+                    <span className="text-zinc-600">{player.balanceScore.toFixed(1)}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-zinc-300 bg-stone-50 p-4">
+          <h2 className="text-lg font-semibold">Zuletzt gespeicherter Teamvorschlag</h2>
+          {!latestSuggestion ? (
+            <p className="mt-2 text-sm text-zinc-700">Noch kein gespeicherter Teamvorschlag vorhanden.</p>
+          ) : (
+            <>
+              <div className="mt-2 grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
+                <p><span className="font-medium">Erstellt:</span> {formatSuggestionDate(latestSuggestion.createdAt)}</p>
+                <p><span className="font-medium">Algorithmus-Version:</span> {latestSuggestion.algorithmVersion}</p>
+                <p><span className="font-medium">Score-Differenz:</span> {Number(latestSuggestion.scoreDiff).toFixed(2)}</p>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <article className="rounded-xl border border-zinc-300 bg-white p-3">
+                  <h3 className="font-medium">Team A</h3>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {latestTeamA.map((player) => (
+                      <li key={`latest-a-${player.playerId}`} className="flex justify-between gap-2">
+                        <span>{player.playerName}</span>
+                        <span className="text-zinc-600">{Number(player.balanceScoreAtCreation).toFixed(1)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+                <article className="rounded-xl border border-zinc-300 bg-white p-3">
+                  <h3 className="font-medium">Team B</h3>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {latestTeamB.map((player) => (
+                      <li key={`latest-b-${player.playerId}`} className="flex justify-between gap-2">
+                        <span>{player.playerName}</span>
+                        <span className="text-zinc-600">{Number(player.balanceScoreAtCreation).toFixed(1)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              </div>
+            </>
+          )}
         </section>
       </section>
     </main>

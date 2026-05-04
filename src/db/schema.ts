@@ -146,6 +146,43 @@ export const playerPlanningProfiles = pgTable(
   })
 );
 
+export const matchdayTeamSuggestions = pgTable("matchday_team_suggestions", {
+  id: serial("id").primaryKey(),
+  matchdayId: integer("matchday_id")
+    .notNull()
+    .references(() => matchdays.id, { onDelete: "cascade" }),
+  algorithmVersion: text("algorithm_version").notNull().default("v1_snake_draft"),
+  scoreDiff: numeric("score_diff", { precision: 8, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const matchdayTeamSuggestionPlayers = pgTable(
+  "matchday_team_suggestion_players",
+  {
+    id: serial("id").primaryKey(),
+    suggestionId: integer("suggestion_id")
+      .notNull()
+      .references(() => matchdayTeamSuggestions.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    teamSide: text("team_side").notNull(),
+    balanceScoreAtCreation: numeric("balance_score_at_creation", { precision: 8, scale: 2 }).notNull(),
+    playerRoleAtCreation: text("player_role_at_creation").notNull(),
+    isRunnerAtCreation: boolean("is_runner_at_creation").notNull().default(false),
+    isDefensiveAtCreation: boolean("is_defensive_at_creation").notNull().default(false),
+    isOffensiveAtCreation: boolean("is_offensive_at_creation").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueSuggestionPlayer: uniqueIndex("matchday_team_suggestion_players_suggestion_player_uq").on(
+      table.suggestionId,
+      table.playerId,
+    ),
+  }),
+);
+
 export const matchWeather = pgTable("match_weather", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id")
