@@ -22,6 +22,7 @@ import {
   isSunnyLikeWeather,
 } from "@/src/lib/weatherIcons";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
+import { buildUpcomingMatchdayStory } from "@/src/lib/matchdayStory";
 
 async function ensureMatchdayTables() {
   await db.execute(sql`
@@ -559,6 +560,13 @@ export default async function MatchdayPage({
     canceledStreakPlayer,
   });
 
+  const { storyText: matchdayStoryText } = await buildUpcomingMatchdayStory({
+    matchDateBefore: new Date(`${upcomingMondayIso}T23:59:59`),
+    topN: 5,
+    maxItems: 3,
+    participantPlayerIds: selectedIds,
+  });
+
   async function saveMatchdayParticipants(formData: FormData) {
     "use server";
 
@@ -733,6 +741,15 @@ export default async function MatchdayPage({
                 </li>
               ))}
             </ul>
+
+            {matchdayStoryText ? (
+              <article className="mt-4 rounded-lg border border-zinc-300 bg-white px-3 py-3">
+                <h3 className="text-sm font-semibold text-zinc-900">🔥 Storylines des Spieltags</h3>
+                <div className="prose prose-sm mt-2 max-w-none whitespace-pre-line text-zinc-700">
+                  {matchdayStoryText}
+                </div>
+              </article>
+            ) : null}
           </section>
         </div>
       </section>
