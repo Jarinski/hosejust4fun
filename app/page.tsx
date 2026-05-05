@@ -543,18 +543,17 @@ export default async function Home() {
   const mvpCount = sql<number>`count(${matches.id})`;
   const gamesCount = sql<number>`count(${matchParticipants.id})`;
 
-  const [topScorers, topAssists, mostGames] = await Promise.all([
+  const [scorerGoalRows, topAssists, mostGames] = await Promise.all([
     db
       .select({
         playerId: players.id,
         playerName: players.name,
-        value: goalsCount.as("value"),
+        goals: goalsCount.as("goals"),
       })
       .from(goalEvents)
       .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
       .groupBy(players.id, players.name)
-      .orderBy(desc(goalsCount), asc(players.name))
-      .limit(5),
+      .orderBy(desc(goalsCount), asc(players.name)),
     db
       .select({
         playerId: players.id,
@@ -579,6 +578,47 @@ export default async function Home() {
       .orderBy(desc(gamesCount), asc(players.name))
       .limit(5),
   ]);
+
+  const topGoalScorers = [...scorerGoalRows]
+    .sort((a, b) => b.goals - a.goals || a.playerName.localeCompare(b.playerName, "de"))
+    .slice(0, 5)
+    .map((row) => ({
+      playerId: row.playerId,
+      playerName: row.playerName,
+      value: row.goals,
+    }));
+
+  const scorerPointsByPlayerId = new Map<number, { playerName: string; goals: number; assists: number }>();
+
+  for (const row of scorerGoalRows) {
+    scorerPointsByPlayerId.set(row.playerId, {
+      playerName: row.playerName,
+      goals: row.goals,
+      assists: 0,
+    });
+  }
+
+  for (const row of topAssists) {
+    const existing = scorerPointsByPlayerId.get(row.playerId);
+    if (existing) {
+      existing.assists = row.value;
+    } else {
+      scorerPointsByPlayerId.set(row.playerId, {
+        playerName: row.playerName,
+        goals: 0,
+        assists: row.value,
+      });
+    }
+  }
+
+  const topScorers = Array.from(scorerPointsByPlayerId.entries())
+    .map(([playerId, stats]) => ({
+      playerId,
+      playerName: stats.playerName,
+      value: stats.goals + stats.assists,
+    }))
+    .sort((a, b) => b.value - a.value || a.playerName.localeCompare(b.playerName, "de"))
+    .slice(0, 5);
 
   const topMvps = mvpColumnAvailable
     ? await db
@@ -625,8 +665,17 @@ export default async function Home() {
       value: topScorers[0]?.value ?? 0,
       info:
         topScorers.length > 1
-          ? `${topScorers[0].value - topScorers[1].value} Tore Vorsprung`
+          ? `${topScorers[0].value - topScorers[1].value} Scorerpunkte Vorsprung`
           : "Allein an der Spitze",
+    },
+    {
+      title: "Top Torschützen",
+      leader: topGoalScorers[0]?.playerName ?? "—",
+      value: topGoalScorers[0]?.value ?? 0,
+      info:
+        topGoalScorers.length > 1
+          ? `${topGoalScorers[0].value - topGoalScorers[1].value} Tore Vorsprung`
+          : "Treffsicher Nummer 1",
     },
     {
       title: "Top-Vorlagengeber",
@@ -747,7 +796,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {statCards.map((card) => (
             <article
               key={card.title}
@@ -802,7 +851,8 @@ export default async function Home() {
           <h2 className="mb-3 text-lg font-bold sm:text-xl">Rankings</h2>
           <div className="grid gap-3 md:grid-cols-3">
             {[
-              { title: "Topscorer Top 5", data: topScorers, unit: "Tore" },
+              { title: "Topscorer Top 5", data: topScorers, unit: "Scorerpunkte" },
+              { title: "Top Torschützen Top 5", data: topGoalScorers, unit: "Tore" },
               { title: "Top-Assists Top 5", data: topAssists, unit: "Assists" },
               { title: "Top-MVPs Top 5", data: topMvps, unit: "MVP" },
             ].map((ranking) => (

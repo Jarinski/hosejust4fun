@@ -181,7 +181,7 @@ export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageP
       : "player";
   const sortDir = dirParam === "desc" ? "desc" : "asc";
 
-  const [legacyStats, modernStats]: [LegacyPlayerRow[], ModernPlayerRow[]] = await Promise.all([
+  const [legacyRows, modernStats] = await Promise.all([
     db
       .select({
         id: legacyPlayerCareerStats.id,
@@ -189,12 +189,16 @@ export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageP
         games: legacyPlayerCareerStats.games,
         goals: legacyPlayerCareerStats.goals,
         assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
       })
       .from(legacyPlayerCareerStats)
       .orderBy(asc(legacyPlayerCareerStats.playerName)),
     getModernPlayerStats(false),
   ]);
+
+  const legacyStats: LegacyPlayerRow[] = legacyRows.map((row) => ({
+    ...row,
+    points: row.goals + row.assists,
+  }));
 
   const sortedLegacyStats = [...legacyStats].sort((a, b) => {
     if (sortKey === "player") {
@@ -235,7 +239,7 @@ export default async function PlayerStatsPage({ searchParams }: PlayerStatsPageP
     const legacyGames = legacy?.games ?? 0;
     const legacyGoals = legacy?.goals ?? 0;
     const legacyAssists = legacy?.assists ?? 0;
-    const legacyPoints = legacy?.points ?? 0;
+    const legacyPoints = legacyGoals + legacyAssists;
     const modernPoints = player.goals + player.assists;
 
     return {

@@ -177,7 +177,7 @@ function combineStatsByExactName(
       const legacyGames = legacy?.games ?? 0;
       const legacyGoals = legacy?.goals ?? 0;
       const legacyAssists = legacy?.assists ?? 0;
-      const legacyPoints = legacy?.points ?? 0;
+      const legacyPoints = legacyGoals + legacyAssists;
 
       const modernGames = modern?.games ?? 0;
       const modernGoals = modern?.goals ?? 0;
@@ -233,7 +233,7 @@ export default async function CombinedStatsPage({ searchParams }: CombinedStatsP
         games: legacyPlayerCareerStats.games,
         goals: legacyPlayerCareerStats.goals,
         assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
+        points: sql<number>`${legacyPlayerCareerStats.goals} + ${legacyPlayerCareerStats.assists}`,
       })
       .from(legacyPlayerCareerStats),
     getModernPlayerStats(),

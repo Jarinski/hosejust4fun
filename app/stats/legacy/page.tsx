@@ -70,55 +70,32 @@ export default async function LegacyStatsPage({ searchParams }: LegacyStatsPageP
       : "points";
   const sortDir = dirParam === "asc" ? "asc" : "desc";
 
-  const [topGoals, topAssists, topPoints, allPlayers] = await Promise.all([
-    db
-      .select({
-        id: legacyPlayerCareerStats.id,
-        playerName: legacyPlayerCareerStats.playerName,
-        games: legacyPlayerCareerStats.games,
-        goals: legacyPlayerCareerStats.goals,
-        assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
-      })
-      .from(legacyPlayerCareerStats)
-      .orderBy(desc(legacyPlayerCareerStats.goals), asc(legacyPlayerCareerStats.playerName))
-      .limit(10),
-    db
-      .select({
-        id: legacyPlayerCareerStats.id,
-        playerName: legacyPlayerCareerStats.playerName,
-        games: legacyPlayerCareerStats.games,
-        goals: legacyPlayerCareerStats.goals,
-        assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
-      })
-      .from(legacyPlayerCareerStats)
-      .orderBy(desc(legacyPlayerCareerStats.assists), asc(legacyPlayerCareerStats.playerName))
-      .limit(10),
-    db
-      .select({
-        id: legacyPlayerCareerStats.id,
-        playerName: legacyPlayerCareerStats.playerName,
-        games: legacyPlayerCareerStats.games,
-        goals: legacyPlayerCareerStats.goals,
-        assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
-      })
-      .from(legacyPlayerCareerStats)
-      .orderBy(desc(legacyPlayerCareerStats.points), asc(legacyPlayerCareerStats.playerName))
-      .limit(10),
-    db
-      .select({
-        id: legacyPlayerCareerStats.id,
-        playerName: legacyPlayerCareerStats.playerName,
-        games: legacyPlayerCareerStats.games,
-        goals: legacyPlayerCareerStats.goals,
-        assists: legacyPlayerCareerStats.assists,
-        points: legacyPlayerCareerStats.points,
-      })
-      .from(legacyPlayerCareerStats)
-      .orderBy(desc(legacyPlayerCareerStats.points), asc(legacyPlayerCareerStats.playerName)),
-  ]);
+  const legacyRows = await db
+    .select({
+      id: legacyPlayerCareerStats.id,
+      playerName: legacyPlayerCareerStats.playerName,
+      games: legacyPlayerCareerStats.games,
+      goals: legacyPlayerCareerStats.goals,
+      assists: legacyPlayerCareerStats.assists,
+    })
+    .from(legacyPlayerCareerStats);
+
+  const allPlayers: LegacyStatPlayer[] = legacyRows.map((row) => ({
+    ...row,
+    points: row.goals + row.assists,
+  }));
+
+  const topGoals = [...allPlayers]
+    .sort((a, b) => b.goals - a.goals || a.playerName.localeCompare(b.playerName, "de"))
+    .slice(0, 10);
+
+  const topAssists = [...allPlayers]
+    .sort((a, b) => b.assists - a.assists || a.playerName.localeCompare(b.playerName, "de"))
+    .slice(0, 10);
+
+  const topPoints = [...allPlayers]
+    .sort((a, b) => b.points - a.points || a.playerName.localeCompare(b.playerName, "de"))
+    .slice(0, 10);
 
   const sortedAllPlayers = [...allPlayers].sort((a, b) => {
     if (sortKey === "player") {
