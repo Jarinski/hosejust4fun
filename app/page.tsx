@@ -580,12 +580,12 @@ export default async function Home() {
   ]);
 
   const topGoalScorers = [...scorerGoalRows]
-    .sort((a, b) => b.goals - a.goals || a.playerName.localeCompare(b.playerName, "de"))
+    .sort((a, b) => Number(b.goals) - Number(a.goals) || a.playerName.localeCompare(b.playerName, "de"))
     .slice(0, 5)
     .map((row) => ({
       playerId: row.playerId,
       playerName: row.playerName,
-      value: row.goals,
+      value: Number(row.goals) || 0,
     }));
 
   const scorerPointsByPlayerId = new Map<number, { playerName: string; goals: number; assists: number }>();
@@ -593,7 +593,7 @@ export default async function Home() {
   for (const row of scorerGoalRows) {
     scorerPointsByPlayerId.set(row.playerId, {
       playerName: row.playerName,
-      goals: row.goals,
+      goals: Number(row.goals) || 0,
       assists: 0,
     });
   }
@@ -601,12 +601,12 @@ export default async function Home() {
   for (const row of topAssists) {
     const existing = scorerPointsByPlayerId.get(row.playerId);
     if (existing) {
-      existing.assists = row.value;
+      existing.assists = Number(row.value) || 0;
     } else {
       scorerPointsByPlayerId.set(row.playerId, {
         playerName: row.playerName,
         goals: 0,
-        assists: row.value,
+        assists: Number(row.value) || 0,
       });
     }
   }
