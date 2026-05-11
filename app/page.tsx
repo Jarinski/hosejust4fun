@@ -545,19 +545,30 @@ export default async function Home() {
 
   const totalGoalsOverall = allGoalMinuteRows.length;
 
-  const goalMinuteCounter = new Map<number, number>();
+  const totalMatchesPlayed = allMatchesForSeries.length;
+  let earlyPhaseGoals = 0;
+  let midPhaseGoals = 0;
+  let latePhaseGoals = 0;
+
   for (const row of allGoalMinuteRows) {
     if (row.minute === null || row.minute < 0) continue;
-    goalMinuteCounter.set(row.minute, (goalMinuteCounter.get(row.minute) ?? 0) + 1);
+    if (row.minute <= 15) {
+      earlyPhaseGoals += 1;
+    } else if (row.minute >= 75) {
+      latePhaseGoals += 1;
+    } else {
+      midPhaseGoals += 1;
+    }
   }
 
-  const topGoalMinutes = Array.from(goalMinuteCounter.entries())
-    .map(([minute, goals]) => ({ minute, goals }))
-    .sort((a, b) => {
-      if (b.goals !== a.goals) return b.goals - a.goals;
-      return a.minute - b.minute;
-    })
-    .slice(0, 3);
+  const averageGoalsByPhase =
+    totalMatchesPlayed > 0
+      ? {
+          early: earlyPhaseGoals / totalMatchesPlayed,
+          mid: midPhaseGoals / totalMatchesPlayed,
+          late: latePhaseGoals / totalMatchesPlayed,
+        }
+      : null;
 
   const historicalGoalTotals =
     historicalMatchIdsForForecast.length > 0
@@ -867,19 +878,27 @@ export default async function Home() {
         <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
           <div className="grid gap-3 md:grid-cols-3">
             <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Meiste Tore nach Minuten</p>
-              {topGoalMinutes.length > 0 ? (
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Ø Tore nach Spielphase</p>
+              {averageGoalsByPhase ? (
                 <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
-                  {topGoalMinutes.map((entry) => (
-                    <li key={entry.minute}>
-                      <span className="font-semibold text-zinc-900">{entry.minute}. Minute</span>
-                      {" · "}
-                      {entry.goals} Tore
-                    </li>
-                  ))}
+                  <li>
+                    <span className="font-semibold text-zinc-900">Frühphase (bis 15.)</span>
+                    {" · "}
+                    {averageGoalsByPhase.early.toFixed(2)} Tore
+                  </li>
+                  <li>
+                    <span className="font-semibold text-zinc-900">Mittelphase (16.–74.)</span>
+                    {" · "}
+                    {averageGoalsByPhase.mid.toFixed(2)} Tore
+                  </li>
+                  <li>
+                    <span className="font-semibold text-zinc-900">Spätphase (ab 75.)</span>
+                    {" · "}
+                    {averageGoalsByPhase.late.toFixed(2)} Tore
+                  </li>
                 </ul>
               ) : (
-                <p className="mt-2 text-sm text-zinc-500">Noch keine Tor-Minuten erfasst.</p>
+                <p className="mt-2 text-sm text-zinc-500">Noch keine Tor-Daten vorhanden.</p>
               )}
             </article>
 
