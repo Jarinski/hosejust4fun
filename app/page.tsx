@@ -406,7 +406,7 @@ export default async function Home() {
     [...upcomingSelectedPlayers, ...upcomingCanceledPlayers].map((player) => [player.id, player.name])
   );
 
-  const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number }>();
+  const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number; goalsTogether: number }>();
 
   for (const match of historicalMatchesForForecast) {
     const team1 = historicalParticipantsForForecast
@@ -428,10 +428,12 @@ export default async function Home() {
           const a = playerIds[i]!;
           const b = playerIds[j]!;
           const key = `${a}-${b}`;
-          const previous = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0 };
+          const previous = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0, goalsTogether: 0 };
+          const goalsInMatch = won ? Math.max(match.team1Score, match.team2Score) : Math.min(match.team1Score, match.team2Score);
           duoStatsByKey.set(key, {
             gamesTogether: previous.gamesTogether + 1,
             winsTogether: previous.winsTogether + (won ? 1 : 0),
+            goalsTogether: previous.goalsTogether + goalsInMatch,
           });
         }
       }
@@ -441,23 +443,25 @@ export default async function Home() {
     processTeam(team2, team2Won);
   }
 
-  const strongestDuo = Array.from(duoStatsByKey.entries())
+  const availableDuoStats = Array.from(duoStatsByKey.entries())
     .map(([key, stats]) => {
       const [aRaw, bRaw] = key.split("-");
       const a = Number(aRaw);
       const b = Number(bRaw);
       return { a, b, ...stats };
     })
-    .filter(
-      (duo) =>
-        selectedPlayerIdsSet.has(duo.a) && selectedPlayerIdsSet.has(duo.b) && duo.gamesTogether >= 2
-    )
+    .filter((duo) => selectedPlayerIdsSet.has(duo.a) && selectedPlayerIdsSet.has(duo.b));
+
+  const strongestDuo = availableDuoStats
+    .filter((duo) => duo.gamesTogether >= 2)
     .map((duo) => ({
       playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
       playerBName: playerNameById.get(duo.b) ?? `Spieler #${duo.b}`,
       gamesTogether: duo.gamesTogether,
       winsTogether: duo.winsTogether,
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+      goalsTogether: duo.goalsTogether,
+      goalsPerGame: duo.goalsTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
@@ -479,6 +483,8 @@ export default async function Home() {
       gamesTogether: duo.gamesTogether,
       winsTogether: duo.winsTogether,
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+      goalsTogether: duo.goalsTogether,
+      goalsPerGame: duo.goalsTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
@@ -487,6 +493,44 @@ export default async function Home() {
     })[0] ?? null;
 
   const bestAvailableDuo = strongestDuo;
+
+  const topScoringWinningDuos = availableDuoStats
+    .filter((duo) => duo.gamesTogether >= 2)
+    .map((duo) => ({
+      playerAName: String(playerNameById.get(duo.a) ?? `Spieler #${duo.a}`),
+      playerBName: String(playerNameById.get(duo.b) ?? `Spieler #${duo.b}`),
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+      goalsTogether: duo.goalsTogether,
+      goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+    }))
+    .sort((a, b) => {
+      if ((b.goalsPerGame ?? 0) !== (a.goalsPerGame ?? 0)) return (b.goalsPerGame ?? 0) - (a.goalsPerGame ?? 0);
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })
+    .slice(0, 2);
+
+  const weakestAvailableDuos = availableDuoStats
+    .filter((duo) => duo.gamesTogether >= 2)
+    .map((duo) => ({
+      playerAName: String(playerNameById.get(duo.a) ?? `Spieler #${duo.a}`),
+      playerBName: String(playerNameById.get(duo.b) ?? `Spieler #${duo.b}`),
+      gamesTogether: duo.gamesTogether,
+      winsTogether: duo.winsTogether,
+      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
+      goalsTogether: duo.goalsTogether,
+      goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+    }))
+    .sort((a, b) => {
+      if (a.winRatePct !== b.winRatePct) return a.winRatePct - b.winRatePct;
+      if ((a.goalsPerGame ?? 0) !== (b.goalsPerGame ?? 0)) return (a.goalsPerGame ?? 0) - (b.goalsPerGame ?? 0);
+      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
+      return a.playerAName.localeCompare(b.playerAName, "de");
+    })
+    .slice(0, 2);
 
   const participantByMatchAndPlayer = new Map<string, "team_1" | "team_2">();
   for (const participant of historicalParticipantsForForecast) {
@@ -533,6 +577,8 @@ export default async function Home() {
     strongestDuo,
     bestOverallDuo,
     bestAvailableDuo,
+    topScoringWinningDuos,
+    weakestAvailableDuos,
     returningPlayers,
     weatherPerformance: null,
     canceledStreakPlayer,

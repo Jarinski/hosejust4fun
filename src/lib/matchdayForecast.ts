@@ -12,6 +12,8 @@ type DuoForecast = {
   gamesTogether: number;
   winsTogether: number;
   winRatePct: number;
+  goalsTogether?: number;
+  goalsPerGame?: number;
 };
 
 type ReturningPlayer = {
@@ -40,6 +42,8 @@ type MatchdayForecastInput = {
   strongestDuo: DuoForecast | null;
   bestOverallDuo: DuoForecast | null;
   bestAvailableDuo: DuoForecast | null;
+  topScoringWinningDuos: DuoForecast[];
+  weakestAvailableDuos: DuoForecast[];
   returningPlayers: ReturningPlayer[];
   weatherPerformance: WeatherPerformanceInsight | null;
   canceledStreakPlayer: {
@@ -56,6 +60,8 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
     strongestDuo,
     bestOverallDuo,
     bestAvailableDuo,
+    topScoringWinningDuos,
+    weakestAvailableDuos,
     returningPlayers,
     weatherPerformance,
     canceledStreakPlayer,
@@ -94,6 +100,25 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
     lines.push(
       `🤝 ${strongestDuo.playerAName} + ${strongestDuo.playerBName}: ${strongestDuo.winsTogether}/${strongestDuo.gamesTogether} Siege gemeinsam (${strongestDuo.winRatePct}%). Wenn die zusammen in ein Team rutschen, wird’s für die anderen ungemütlich.`
     );
+  }
+
+  if (topScoringWinningDuos.length > 0) {
+    const topLines = topScoringWinningDuos.slice(0, 2).map((duo) => {
+      const goalsPart =
+        duo.goalsTogether !== undefined && duo.goalsPerGame !== undefined
+          ? `${duo.goalsTogether} Tore (${duo.goalsPerGame.toFixed(2)}/Spiel)`
+          : `${duo.winsTogether}/${duo.gamesTogether} Siege`;
+      return `${duo.playerAName} + ${duo.playerBName}: ${goalsPart}, Siegquote ${duo.winRatePct}%`;
+    });
+
+    lines.push(`🎯 Torgefährliche Gewinner-Duos: ${topLines.join(" · ")}.`);
+  }
+
+  if (weakestAvailableDuos.length > 0) {
+    const flopLines = weakestAvailableDuos.slice(0, 2).map(
+      (duo) => `${duo.playerAName} + ${duo.playerBName} (${duo.winRatePct}% Siegquote)`
+    );
+    lines.push(`⚠️ Eher schwierig bisher: ${flopLines.join(" · ")}.`);
   }
 
   if (canceledPlayers.length > 0) {
