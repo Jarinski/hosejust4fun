@@ -8,6 +8,7 @@ type DuoPerformance = {
   player2Id: number;
   gamesTogether: number;
   teamGoals: number;
+  winsTogether: number;
 };
 
 type DuoPerformancePageProps = {
@@ -46,9 +47,10 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     sortParam === "player2" ||
     sortParam === "games" ||
     sortParam === "goals" ||
+    sortParam === "winRate" ||
     sortParam === "gpg"
       ? sortParam
-      : "goals";
+      : "winRate";
   const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const participants = validSeasonId
@@ -143,6 +145,18 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     teamGoalsByMatch.set(key, (teamGoalsByMatch.get(key) ?? 0) + 1);
   }
 
+  const matchScoreById = new Map<number, { team1Score: number; team2Score: number }>();
+
+  for (const participant of participants) {
+    if (matchScoreById.has(participant.matchId)) {
+      continue;
+    }
+
+    const team1Score = teamGoalsByMatch.get(`${participant.matchId}-team_1`) ?? 0;
+    const team2Score = teamGoalsByMatch.get(`${participant.matchId}-team_2`) ?? 0;
+    matchScoreById.set(participant.matchId, { team1Score, team2Score });
+  }
+
   const teamsByMatch = new Map<string, Set<number>>();
 
   for (const participant of participants) {
@@ -169,10 +183,24 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
           player2Id,
           gamesTogether: 0,
           teamGoals: 0,
+          winsTogether: 0,
         };
+
+        const [matchIdRaw, teamSide] = teamKey.split("-");
+        const matchId = Number(matchIdRaw);
+        const matchScore = matchScoreById.get(matchId);
+
+        const didWin =
+          !!matchScore &&
+          (teamSide === "team_1"
+            ? matchScore.team1Score > matchScore.team2Score
+            : matchScore.team2Score > matchScore.team1Score);
 
         current.gamesTogether += 1;
         current.teamGoals += teamGoals;
+        if (didWin) {
+          current.winsTogether += 1;
+        }
 
         duoStats.set(duoKey, current);
       }
@@ -226,6 +254,10 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
           entry.gamesTogether > 0
             ? (entry.teamGoals / entry.gamesTogether).toFixed(2)
             : "0.00",
+        winRate:
+          entry.gamesTogether > 0
+            ? (entry.winsTogether / entry.gamesTogether) * 100
+            : 0,
       };
     });
 
@@ -267,6 +299,18 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
       return b.teamGoals - a.teamGoals;
     }
 
+    if (sortKey === "winRate") {
+      if (a.winRate !== b.winRate) {
+        return sortDir === "asc" ? a.winRate - b.winRate : b.winRate - a.winRate;
+      }
+
+      if (a.gamesTogether !== b.gamesTogether) {
+        return b.gamesTogether - a.gamesTogether;
+      }
+
+      return b.teamGoals - a.teamGoals;
+    }
+
     if (a.teamGoals !== b.teamGoals) {
       return sortDir === "asc" ? a.teamGoals - b.teamGoals : b.teamGoals - a.teamGoals;
     }
@@ -283,7 +327,7 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     return a.player2Name.localeCompare(b.player2Name, "de");
   });
 
-  const buildSortHref = (column: "player1" | "player2" | "games" | "goals" | "gpg") => {
+  const buildSortHref = (column: "player1" | "player2" | "games" | "goals" | "winRate" | "gpg") => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
 
@@ -296,7 +340,7 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
     return `?${query.toString()}`;
   };
 
-  const sortArrow = (column: "player1" | "player2" | "games" | "goals" | "gpg") => {
+  const sortArrow = (column: "player1" | "player2" | "games" | "goals" | "winRate" | "gpg") => {
     if (sortKey !== column) {
       return "↕";
     }
@@ -339,6 +383,11 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
                   </Link>
                 </th>
                 <th className="px-4 py-3 text-left">
+                  <Link href={buildSortHref("winRate")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                    Gemeinsame Siegesquote <span className="text-xs">{sortArrow("winRate")}</span>
+                  </Link>
+                </th>
+                <th className="px-4 py-3 text-left">
                   <Link href={buildSortHref("gpg")} className="inline-flex items-center gap-1 hover:text-zinc-900">
                     Tore pro Spiel <span className="text-xs">{sortArrow("gpg")}</span>
                   </Link>
@@ -352,6 +401,7 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
                   <td className="px-4 py-3">{entry.player2Name}</td>
                   <td className="px-4 py-3">{entry.gamesTogether}</td>
                   <td className="px-4 py-3">{entry.teamGoals}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-700">{entry.winRate.toFixed(1)}%</td>
                   <td className="px-4 py-3 font-semibold text-red-300">{entry.goalsPerGame}</td>
                 </tr>
               ))}

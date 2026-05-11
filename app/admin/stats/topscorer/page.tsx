@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
 type TopscorerPageProps = {
   searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
@@ -53,13 +53,22 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       : null;
 
   const validSeasonId = selectedSeason?.id;
-  const sortKey = sortParam === "player" || sortParam === "goals" ? sortParam : "goals";
+  const sortKey =
+    sortParam === "player" ||
+    sortParam === "goals" ||
+    sortParam === "goalsPerGame" ||
+    sortParam === "scorerPoints" ||
+    sortParam === "scorerPointsPerGame"
+      ? sortParam
+      : "goals";
   const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   let ownGoalColumnAvailable = true;
   let goalkeeperColumnAvailable = true;
   let topScorers: Array<{ playerId: number; playerName: string; goals: number }> = [];
+  let assistsByPlayer = new Map<number, number>();
+  let gamesByPlayer = new Map<number, number>();
 
   const queryTopScorers = async (options: { filterOwnGoals: boolean; filterGoalkeepers: boolean }) => {
     const filters = [];
@@ -144,7 +153,75 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     }
   }
 
-  const sortedTopScorers = [...topScorers].sort((a, b) => {
+  const playerIds = topScorers.map((entry) => entry.playerId);
+
+  if (playerIds.length > 0) {
+    const assistsRows = validSeasonId
+      ? await db
+          .select({
+            playerId: players.id,
+            assists: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+          .where(
+            and(
+              eq(matches.seasonId, validSeasonId),
+              eq(goalEvents.isOwnGoal, false),
+            ),
+          )
+          .groupBy(players.id)
+      : await db
+          .select({
+            playerId: players.id,
+            assists: sql<number>`count(${goalEvents.id})`,
+          })
+          .from(goalEvents)
+          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+          .where(eq(goalEvents.isOwnGoal, false))
+          .groupBy(players.id);
+
+    assistsByPlayer = new Map(assistsRows.map((row) => [row.playerId, Number(row.assists) || 0]));
+
+    const gamesRows = validSeasonId
+      ? await db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .where(eq(matches.seasonId, validSeasonId))
+          .groupBy(players.id)
+      : await db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .groupBy(players.id);
+
+    gamesByPlayer = new Map(gamesRows.map((row) => [row.playerId, Number(row.games) || 0]));
+  }
+
+  const rows = topScorers.map((entry) => {
+    const games = gamesByPlayer.get(entry.playerId) ?? 0;
+    const assists = assistsByPlayer.get(entry.playerId) ?? 0;
+    const scorerPoints = entry.goals + assists;
+
+    return {
+      ...entry,
+      games,
+      goalsPerGame: games > 0 ? entry.goals / games : 0,
+      scorerPoints,
+      scorerPointsPerGame: games > 0 ? scorerPoints / games : 0,
+    };
+  });
+
+  const sortedTopScorers = [...rows].sort((a, b) => {
     if (sortKey === "player") {
       const byName = a.playerName.localeCompare(b.playerName, "de");
       if (byName !== 0) {
@@ -154,6 +231,32 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       return b.goals - a.goals;
     }
 
+    if (sortKey === "goalsPerGame") {
+      if (a.goalsPerGame !== b.goalsPerGame) {
+        return sortDir === "asc" ? a.goalsPerGame - b.goalsPerGame : b.goalsPerGame - a.goalsPerGame;
+      }
+
+      return b.goals - a.goals;
+    }
+
+    if (sortKey === "scorerPoints") {
+      if (a.scorerPoints !== b.scorerPoints) {
+        return sortDir === "asc" ? a.scorerPoints - b.scorerPoints : b.scorerPoints - a.scorerPoints;
+      }
+
+      return b.goals - a.goals;
+    }
+
+    if (sortKey === "scorerPointsPerGame") {
+      if (a.scorerPointsPerGame !== b.scorerPointsPerGame) {
+        return sortDir === "asc"
+          ? a.scorerPointsPerGame - b.scorerPointsPerGame
+          : b.scorerPointsPerGame - a.scorerPointsPerGame;
+      }
+
+      return b.scorerPoints - a.scorerPoints;
+    }
+
     if (a.goals !== b.goals) {
       return sortDir === "asc" ? a.goals - b.goals : b.goals - a.goals;
     }
@@ -161,7 +264,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     return a.playerName.localeCompare(b.playerName, "de");
   });
 
-  const buildSortHref = (column: "player" | "goals") => {
+  const buildSortHref = (column: "player" | "goals" | "goalsPerGame" | "scorerPoints" | "scorerPointsPerGame") => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
 
@@ -175,7 +278,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     return `?${query.toString()}`;
   };
 
-  const sortArrow = (column: "player" | "goals") => {
+  const sortArrow = (column: "player" | "goals" | "goalsPerGame" | "scorerPoints" | "scorerPointsPerGame") => {
     if (sortKey !== column) {
       return "↕";
     }
@@ -190,7 +293,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
         <Link href="/admin/matches" className="hover:text-zinc-900">← Zurück zu Matches</Link>
       </p>
 
-      <h1 className="mb-4 text-2xl font-semibold">Topscorer</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Top-Torschützen</h1>
 
       <form method="GET" className="mb-4 flex flex-wrap items-center gap-2">
         <label htmlFor="seasonId" className="text-sm text-zinc-600">Saison:</label>
@@ -252,6 +355,21 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
                   Tore <span className="text-xs">{sortArrow("goals")}</span>
                 </Link>
               </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("goalsPerGame")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Tore/Spiel <span className="text-xs">{sortArrow("goalsPerGame")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("scorerPoints")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Scorerpunkte <span className="text-xs">{sortArrow("scorerPoints")}</span>
+                </Link>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("scorerPointsPerGame")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Scorerpunkte/Spiel <span className="text-xs">{sortArrow("scorerPointsPerGame")}</span>
+                </Link>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -259,6 +377,9 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
               <tr key={entry.playerId} className="border-t border-zinc-300">
                 <td className="px-4 py-3">{entry.playerName}</td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.goals}</td>
+                <td className="px-4 py-3">{entry.goalsPerGame.toFixed(2)}</td>
+                <td className="px-4 py-3">{entry.scorerPoints}</td>
+                <td className="px-4 py-3">{entry.scorerPointsPerGame.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

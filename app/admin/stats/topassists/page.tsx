@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
 type TopAssistsPageProps = {
   searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
@@ -44,7 +44,10 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
       : null;
 
   const validSeasonId = selectedSeason?.id;
-  const sortKey = sortParam === "player" || sortParam === "assists" ? sortParam : "assists";
+  const sortKey =
+    sortParam === "player" || sortParam === "assists" || sortParam === "assistsPerGame"
+      ? sortParam
+      : "assists";
   const sortDir = dirParam === "asc" ? "asc" : "desc";
 
   const assistsCount = sql<number>`count(${goalEvents.id})`;
@@ -94,6 +97,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
   };
 
   let topAssists: Array<{ playerId: number; playerName: string; assists: number }> = [];
+  let gamesByPlayer = new Map<number, number>();
 
   try {
     topAssists = await queryTopAssists({ filterOwnGoals: true, filterGoalkeepers: true });
@@ -127,11 +131,55 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     }
   }
 
-  const sortedTopAssists = [...topAssists].sort((a, b) => {
+  const playerIds = topAssists.map((entry) => entry.playerId);
+
+  if (playerIds.length > 0) {
+    const gamesRows = validSeasonId
+      ? await db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .where(eq(matches.seasonId, validSeasonId))
+          .groupBy(players.id)
+      : await db
+          .select({
+            playerId: players.id,
+            games: sql<number>`count(${matchParticipants.id})`,
+          })
+          .from(matchParticipants)
+          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .groupBy(players.id);
+
+    gamesByPlayer = new Map(gamesRows.map((row) => [row.playerId, Number(row.games) || 0]));
+  }
+
+  const rows = topAssists.map((entry) => {
+    const games = gamesByPlayer.get(entry.playerId) ?? 0;
+
+    return {
+      ...entry,
+      games,
+      assistsPerGame: games > 0 ? entry.assists / games : 0,
+    };
+  });
+
+  const sortedTopAssists = [...rows].sort((a, b) => {
     if (sortKey === "player") {
       const byName = a.playerName.localeCompare(b.playerName, "de");
       if (byName !== 0) {
         return sortDir === "asc" ? byName : -byName;
+      }
+
+      return b.assists - a.assists;
+    }
+
+    if (sortKey === "assistsPerGame") {
+      if (a.assistsPerGame !== b.assistsPerGame) {
+        return sortDir === "asc" ? a.assistsPerGame - b.assistsPerGame : b.assistsPerGame - a.assistsPerGame;
       }
 
       return b.assists - a.assists;
@@ -144,7 +192,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     return a.playerName.localeCompare(b.playerName, "de");
   });
 
-  const buildSortHref = (column: "player" | "assists") => {
+  const buildSortHref = (column: "player" | "assists" | "assistsPerGame") => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
 
@@ -158,7 +206,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     return `?${query.toString()}`;
   };
 
-  const sortArrow = (column: "player" | "assists") => {
+  const sortArrow = (column: "player" | "assists" | "assistsPerGame") => {
     if (sortKey !== column) {
       return "↕";
     }
@@ -235,6 +283,11 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
                   Assists <span className="text-xs">{sortArrow("assists")}</span>
                 </Link>
               </th>
+              <th className="px-4 py-3 text-left">
+                <Link href={buildSortHref("assistsPerGame")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                  Assists/Spiel <span className="text-xs">{sortArrow("assistsPerGame")}</span>
+                </Link>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -242,6 +295,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
               <tr key={entry.playerId} className="border-t border-zinc-300">
                 <td className="px-4 py-3">{entry.playerName}</td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.assists}</td>
+                <td className="px-4 py-3">{entry.assistsPerGame.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
