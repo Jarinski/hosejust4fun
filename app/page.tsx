@@ -538,6 +538,60 @@ export default async function Home() {
     canceledStreakPlayer,
   });
 
+  const allGoalMinuteRows = await db
+    .select({ minute: goalEvents.minute })
+    .from(goalEvents)
+    .catch(() => [] as Array<{ minute: number | null }>);
+
+  const totalGoalsOverall = allGoalMinuteRows.length;
+
+  const goalMinuteCounter = new Map<number, number>();
+  for (const row of allGoalMinuteRows) {
+    if (row.minute === null || row.minute < 0) continue;
+    goalMinuteCounter.set(row.minute, (goalMinuteCounter.get(row.minute) ?? 0) + 1);
+  }
+
+  const topGoalMinutes = Array.from(goalMinuteCounter.entries())
+    .map(([minute, goals]) => ({ minute, goals }))
+    .sort((a, b) => {
+      if (b.goals !== a.goals) return b.goals - a.goals;
+      return a.minute - b.minute;
+    })
+    .slice(0, 3);
+
+  const historicalGoalTotals =
+    historicalMatchIdsForForecast.length > 0
+      ? await db
+          .select({
+            matchId: goalEvents.matchId,
+            totalGoals: sql<number>`count(${goalEvents.id})::int`,
+          })
+          .from(goalEvents)
+          .where(inArray(goalEvents.matchId, historicalMatchIdsForForecast))
+          .groupBy(goalEvents.matchId)
+          .catch(() => [] as Array<{ matchId: number; totalGoals: number }>)
+      : [];
+
+  const totalGoalsByHistoricalMatchId = new Map(
+    historicalGoalTotals.map((row) => [row.matchId, Number(row.totalGoals) || 0])
+  );
+
+  const relevantHistoricalMatchesForCurrentSquad = historicalMatchesForForecast.filter((match) => {
+    const participants = historicalParticipantsForForecast.filter((p) => p.matchId === match.id);
+    const selectedOverlap = participants.filter((p) => selectedPlayerIdsSet.has(p.playerId)).length;
+    return selectedOverlap >= 2;
+  });
+
+  const totalGoalsInRelevantMatches = relevantHistoricalMatchesForCurrentSquad.reduce(
+    (sum, match) => sum + (totalGoalsByHistoricalMatchId.get(match.id) ?? 0),
+    0
+  );
+
+  const averageGoalsWithCurrentSquad =
+    relevantHistoricalMatchesForCurrentSquad.length > 0
+      ? totalGoalsInRelevantMatches / relevantHistoricalMatchesForCurrentSquad.length
+      : null;
+
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
   const mvpCount = sql<number>`count(${matches.id})`;
@@ -808,6 +862,44 @@ export default async function Home() {
               <p className="mt-1.5 text-xs text-zinc-500 sm:text-sm">{card.info}</p>
             </article>
           ))}
+        </section>
+
+        <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Meiste Tore nach Minuten</p>
+              {topGoalMinutes.length > 0 ? (
+                <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
+                  {topGoalMinutes.map((entry) => (
+                    <li key={entry.minute}>
+                      <span className="font-semibold text-zinc-900">{entry.minute}. Minute</span>
+                      {" · "}
+                      {entry.goals} Tore
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-zinc-500">Noch keine Tor-Minuten erfasst.</p>
+              )}
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Tore insgesamt</p>
+              <p className="mt-2 text-3xl font-extrabold text-zinc-900">{totalGoalsOverall}</p>
+              <p className="mt-1 text-xs text-zinc-500">Alle erfassten Tore in der Datenbank</p>
+            </article>
+
+            <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Ø Tore mit aktuellem Spieltag-Kader</p>
+              <p className="mt-2 text-3xl font-extrabold text-zinc-900">
+                {averageGoalsWithCurrentSquad !== null ? averageGoalsWithCurrentSquad.toFixed(2) : "—"}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Basierend auf {relevantHistoricalMatchesForCurrentSquad.length} früheren Spielen mit mind. 2
+                angemeldeten Spielern
+              </p>
+            </article>
+          </div>
         </section>
 
         <section className="mb-5 rounded-2xl border border-zinc-300 bg-white p-4 shadow-sm sm:p-6">
