@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
@@ -31,6 +31,8 @@ function isMissingColumnError(error: unknown, columnName: string) {
 }
 
 export default async function TopscorerPage({ searchParams }: TopscorerPageProps) {
+  const MODERN_START_DATE = new Date("2026-01-01T00:00:00.000Z");
+
   const allSeasons = await db
     .select({
       id: seasons.id,
@@ -83,25 +85,9 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
     if (validSeasonId) {
       filters.push(eq(matches.seasonId, validSeasonId));
-
-      const whereClause = filters.length > 0 ? and(...filters) : undefined;
-
-      const baseQuery = db
-        .select({
-          playerId: players.id,
-          playerName: players.name,
-          goals: goalsCount.as("goals"),
-        })
-        .from(goalEvents)
-        .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
-        .innerJoin(matches, eq(goalEvents.matchId, matches.id));
-
-      const filteredQuery = whereClause ? baseQuery.where(whereClause) : baseQuery;
-
-      return filteredQuery
-        .groupBy(players.id, players.name)
-        .orderBy(desc(goalsCount), asc(players.name));
     }
+
+    filters.push(gte(matches.matchDate, MODERN_START_DATE));
 
     const whereClause = filters.length > 0 ? and(...filters) : undefined;
 
@@ -112,7 +98,8 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
         goals: goalsCount.as("goals"),
       })
       .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id));
+      .innerJoin(players, eq(goalEvents.scorerPlayerId, players.id))
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id));
 
     const filteredQuery = whereClause ? baseQuery.where(whereClause) : baseQuery;
 
@@ -169,6 +156,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
             and(
               eq(matches.seasonId, validSeasonId),
               eq(goalEvents.isOwnGoal, false),
+              gte(matches.matchDate, MODERN_START_DATE),
             ),
           )
           .groupBy(players.id)
@@ -179,7 +167,8 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           })
           .from(goalEvents)
           .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-          .where(eq(goalEvents.isOwnGoal, false))
+          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+          .where(and(eq(goalEvents.isOwnGoal, false), gte(matches.matchDate, MODERN_START_DATE)))
           .groupBy(players.id);
 
     assistsByPlayer = new Map(assistsRows.map((row) => [row.playerId, Number(row.assists) || 0]));
@@ -193,7 +182,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           .from(matchParticipants)
           .innerJoin(players, eq(matchParticipants.playerId, players.id))
           .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-          .where(eq(matches.seasonId, validSeasonId))
+          .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
           .groupBy(players.id)
       : await db
           .select({
@@ -202,6 +191,8 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
           })
           .from(matchParticipants)
           .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .where(gte(matches.matchDate, MODERN_START_DATE))
           .groupBy(players.id);
 
     gamesByPlayer = new Map(gamesRows.map((row) => [row.playerId, Number(row.games) || 0]));

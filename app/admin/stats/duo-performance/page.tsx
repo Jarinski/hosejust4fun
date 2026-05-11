@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
@@ -20,6 +20,8 @@ type DuoPerformancePageProps = {
 };
 
 export default async function DuoPerformancePage({ searchParams }: DuoPerformancePageProps) {
+  const MODERN_START_DATE = new Date("2026-01-01T00:00:00.000Z");
+
   const allSeasons = await db
     .select({
       id: seasons.id,
@@ -62,14 +64,16 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
         })
         .from(matchParticipants)
         .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-        .where(eq(matches.seasonId, validSeasonId))
+        .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
     : await db
         .select({
           matchId: matchParticipants.matchId,
           playerId: matchParticipants.playerId,
           teamSide: matchParticipants.teamSide,
         })
-        .from(matchParticipants);
+        .from(matchParticipants)
+        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .where(gte(matches.matchDate, MODERN_START_DATE));
 
   const filterUi = (
     <>
@@ -130,13 +134,15 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
         })
         .from(goalEvents)
         .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(eq(matches.seasonId, validSeasonId))
+        .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
     : await db
         .select({
           matchId: goalEvents.matchId,
           teamSide: goalEvents.teamSide,
         })
-        .from(goalEvents);
+        .from(goalEvents)
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(gte(matches.matchDate, MODERN_START_DATE));
 
   const teamGoalsByMatch = new Map<string, number>();
 

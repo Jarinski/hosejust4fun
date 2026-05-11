@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
@@ -22,6 +22,8 @@ function isMissingColumnError(error: unknown, columnName: string) {
 }
 
 export default async function TopAssistsPage({ searchParams }: TopAssistsPageProps) {
+  const MODERN_START_DATE = new Date("2026-01-01T00:00:00.000Z");
+
   const allSeasons = await db
     .select({
       id: seasons.id,
@@ -68,6 +70,9 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
 
     if (validSeasonId) {
       filters.push(eq(matches.seasonId, validSeasonId));
+    }
+
+    filters.push(gte(matches.matchDate, MODERN_START_DATE));
 
       return db
         .select({
@@ -81,19 +86,6 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
         .where(and(...filters))
         .groupBy(players.id, players.name)
         .orderBy(desc(assistsCount), asc(players.name));
-    }
-
-    return db
-      .select({
-        playerId: players.id,
-        playerName: players.name,
-        assists: assistsCount.as("assists"),
-      })
-      .from(goalEvents)
-      .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-      .where(and(...filters))
-      .groupBy(players.id, players.name)
-      .orderBy(desc(assistsCount), asc(players.name));
   };
 
   let topAssists: Array<{ playerId: number; playerName: string; assists: number }> = [];
@@ -143,7 +135,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
           .from(matchParticipants)
           .innerJoin(players, eq(matchParticipants.playerId, players.id))
           .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-          .where(eq(matches.seasonId, validSeasonId))
+          .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
           .groupBy(players.id)
       : await db
           .select({
@@ -152,6 +144,8 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
           })
           .from(matchParticipants)
           .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .where(gte(matches.matchDate, MODERN_START_DATE))
           .groupBy(players.id);
 
     gamesByPlayer = new Map(gamesRows.map((row) => [row.playerId, Number(row.games) || 0]));
