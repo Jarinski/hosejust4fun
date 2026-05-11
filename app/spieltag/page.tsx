@@ -427,6 +427,72 @@ export default async function MatchdayPage({
     );
   }
 
+  const streakPlayers = selectedPlayers
+    .map((player) => {
+      let streak = 0;
+      for (const match of historicalMatches) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) continue;
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+        if (!didWin) break;
+        streak += 1;
+      }
+      return { name: player.name, streak };
+    })
+    .filter((entry) => entry.streak >= 2)
+    .sort((a, b) => b.streak - a.streak)
+    .slice(0, 2);
+
+  const perfectRatePlayers = selectedPlayers
+    .map((player) => {
+      let wins = 0;
+      let games = 0;
+      for (const match of historicalMatches) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) continue;
+        games += 1;
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+        if (didWin) wins += 1;
+      }
+      return { name: player.name, wins, games };
+    })
+    .filter((entry) => entry.games >= 3 && entry.wins === entry.games)
+    .sort((a, b) => b.games - a.games)
+    .slice(0, 2);
+
+  const recentMatchIdsForPeak = historicalMatches.slice(0, 5).map((match) => match.id);
+  const recentGoalsForPeak = await loadGoalsForMatches(recentMatchIdsForPeak);
+  const peakStatsByPlayer = new Map<number, { goals: number; assists: number }>();
+
+  for (const goal of recentGoalsForPeak) {
+    if (goal.isOwnGoal) continue;
+    if (confirmedSet.has(goal.scorerPlayerId)) {
+      const current = peakStatsByPlayer.get(goal.scorerPlayerId) ?? { goals: 0, assists: 0 };
+      current.goals += 1;
+      peakStatsByPlayer.set(goal.scorerPlayerId, current);
+    }
+    if (goal.assistPlayerId !== null && confirmedSet.has(goal.assistPlayerId)) {
+      const current = peakStatsByPlayer.get(goal.assistPlayerId) ?? { goals: 0, assists: 0 };
+      current.assists += 1;
+      peakStatsByPlayer.set(goal.assistPlayerId, current);
+    }
+  }
+
+  const peakFormPlayers = selectedPlayers
+    .map((player) => {
+      const stats = peakStatsByPlayer.get(player.id) ?? { goals: 0, assists: 0 };
+      return { name: player.name, goals: stats.goals, assists: stats.assists, recentMatches: recentMatchIdsForPeak.length };
+    })
+    .filter((entry) => entry.goals >= 2 || entry.assists >= 2)
+    .sort((a, b) => b.goals + b.assists - (a.goals + a.assists))
+    .slice(0, 2);
+
   const canceledStreakPlayer = canceledPlayers
     .map((player) => {
       let streak = 0;
@@ -611,11 +677,13 @@ export default async function MatchdayPage({
     selectedPlayers,
     canceledPlayers,
     weather,
-    strongestDuo,
     bestOverallDuo,
     bestAvailableDuo,
     topScoringWinningDuos,
     weakestAvailableDuos,
+    streakPlayers,
+    perfectRatePlayers,
+    peakFormPlayers,
     returningPlayers,
     weatherPerformance,
     canceledStreakPlayer,

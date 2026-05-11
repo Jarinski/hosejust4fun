@@ -39,11 +39,13 @@ type MatchdayForecastInput = {
   selectedPlayers: SelectedPlayer[];
   canceledPlayers: SelectedPlayer[];
   weather: WeatherSnapshot;
-  strongestDuo: DuoForecast | null;
   bestOverallDuo: DuoForecast | null;
   bestAvailableDuo: DuoForecast | null;
   topScoringWinningDuos: DuoForecast[];
   weakestAvailableDuos: DuoForecast[];
+  streakPlayers: Array<{ name: string; streak: number }>;
+  perfectRatePlayers: Array<{ name: string; wins: number; games: number }>;
+  peakFormPlayers: Array<{ name: string; goals: number; assists: number; recentMatches: number }>;
   returningPlayers: ReturningPlayer[];
   weatherPerformance: WeatherPerformanceInsight | null;
   canceledStreakPlayer: {
@@ -57,11 +59,13 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
     selectedPlayers,
     canceledPlayers,
     weather,
-    strongestDuo,
     bestOverallDuo,
     bestAvailableDuo,
     topScoringWinningDuos,
     weakestAvailableDuos,
+    streakPlayers,
+    perfectRatePlayers,
+    peakFormPlayers,
     returningPlayers,
     weatherPerformance,
     canceledStreakPlayer,
@@ -113,6 +117,30 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
       (duo) => `${duo.playerAName} + ${duo.playerBName} (${duo.winRatePct}% Siegquote)`
     );
     lines.push(`⚠️ Eher schwierig bisher: ${flopLines.join(" · ")}.`);
+  }
+
+  if (streakPlayers.length > 0) {
+    const streakLine = streakPlayers
+      .slice(0, 2)
+      .map((p) => `${p.name} (${p.streak} Siege in Folge)`)
+      .join(" · ");
+    lines.push(`🔥 Aktueller Lauf: ${streakLine}.`);
+  }
+
+  if (perfectRatePlayers.length > 0) {
+    const perfectLine = perfectRatePlayers
+      .slice(0, 2)
+      .map((p) => `${p.name} (${p.wins}/${p.games} Siege, 100%)`)
+      .join(" · ");
+    lines.push(`💯 Bisher makellos: ${perfectLine}.`);
+  }
+
+  if (peakFormPlayers.length > 0) {
+    const peakLine = peakFormPlayers
+      .slice(0, 2)
+      .map((p) => `${p.name} (${p.goals} Tore, ${p.assists} Assists in den letzten ${p.recentMatches} Spielen)`)
+      .join(" · ");
+    lines.push(`📈 Peak-Form zuletzt: ${peakLine}.`);
   }
 
   if (canceledPlayers.length > 0) {

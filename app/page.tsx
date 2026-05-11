@@ -540,6 +540,94 @@ export default async function Home() {
     );
   }
 
+  const streakPlayers = upcomingSelectedPlayers
+    .map((player) => {
+      let streak = 0;
+      for (const match of historicalMatchesForForecast) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) continue;
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+        if (!didWin) break;
+        streak += 1;
+      }
+      return { name: player.name, streak };
+    })
+    .filter((entry) => entry.streak >= 2)
+    .sort((a, b) => b.streak - a.streak)
+    .slice(0, 2);
+
+  const perfectRatePlayers = upcomingSelectedPlayers
+    .map((player) => {
+      let wins = 0;
+      let games = 0;
+      for (const match of historicalMatchesForForecast) {
+        const teamSide = participantByMatchAndPlayer.get(`${match.id}-${player.id}`);
+        if (!teamSide) continue;
+        games += 1;
+        const didWin =
+          teamSide === "team_1"
+            ? match.team1Score > match.team2Score
+            : match.team2Score > match.team1Score;
+        if (didWin) wins += 1;
+      }
+      return { name: player.name, wins, games };
+    })
+    .filter((entry) => entry.games >= 3 && entry.wins === entry.games)
+    .sort((a, b) => b.games - a.games)
+    .slice(0, 2);
+
+  const recentMatchIdsForPeak = historicalMatchesForForecast.slice(0, 5).map((match) => match.id);
+  const recentGoalsForPeak =
+    recentMatchIdsForPeak.length > 0
+      ? await db
+          .select({
+            matchId: goalEvents.matchId,
+            scorerPlayerId: goalEvents.scorerPlayerId,
+            assistPlayerId: goalEvents.assistPlayerId,
+            isOwnGoal: goalEvents.isOwnGoal,
+          })
+          .from(goalEvents)
+          .where(inArray(goalEvents.matchId, recentMatchIdsForPeak))
+          .catch(async () => {
+            const legacyGoals = await db
+              .select({
+                matchId: goalEvents.matchId,
+                scorerPlayerId: goalEvents.scorerPlayerId,
+                assistPlayerId: goalEvents.assistPlayerId,
+              })
+              .from(goalEvents)
+              .where(inArray(goalEvents.matchId, recentMatchIdsForPeak));
+            return legacyGoals.map((goal) => ({ ...goal, isOwnGoal: false }));
+          })
+      : [];
+
+  const peakStatsByPlayer = new Map<number, { goals: number; assists: number }>();
+  for (const goal of recentGoalsForPeak) {
+    if (goal.isOwnGoal) continue;
+    if (selectedPlayerIdsSet.has(goal.scorerPlayerId)) {
+      const current = peakStatsByPlayer.get(goal.scorerPlayerId) ?? { goals: 0, assists: 0 };
+      current.goals += 1;
+      peakStatsByPlayer.set(goal.scorerPlayerId, current);
+    }
+    if (goal.assistPlayerId !== null && selectedPlayerIdsSet.has(goal.assistPlayerId)) {
+      const current = peakStatsByPlayer.get(goal.assistPlayerId) ?? { goals: 0, assists: 0 };
+      current.assists += 1;
+      peakStatsByPlayer.set(goal.assistPlayerId, current);
+    }
+  }
+
+  const peakFormPlayers = upcomingSelectedPlayers
+    .map((player) => {
+      const stats = peakStatsByPlayer.get(player.id) ?? { goals: 0, assists: 0 };
+      return { name: player.name, goals: stats.goals, assists: stats.assists, recentMatches: recentMatchIdsForPeak.length };
+    })
+    .filter((entry) => entry.goals >= 2 || entry.assists >= 2)
+    .sort((a, b) => b.goals + b.assists - (a.goals + a.assists))
+    .slice(0, 2);
+
   const canceledStreakPlayer = upcomingCanceledPlayers
     .map((player) => {
       let streak = 0;
@@ -574,11 +662,13 @@ export default async function Home() {
     selectedPlayers: upcomingSelectedPlayers,
     canceledPlayers: upcomingCanceledPlayers,
     weather: nextMatchWeather,
-    strongestDuo,
     bestOverallDuo,
     bestAvailableDuo,
     topScoringWinningDuos,
     weakestAvailableDuos,
+    streakPlayers,
+    perfectRatePlayers,
+    peakFormPlayers,
     returningPlayers,
     weatherPerformance: null,
     canceledStreakPlayer,
