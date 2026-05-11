@@ -92,7 +92,7 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
 
   lines.push(
     selectedPlayers.length >= 18
-      ? `🔥 ${selectedPlayers.length} Zusagen! Das riecht nach Champions-League-Niveau auf Kunstrasen.`
+      ? `🔥 ${selectedPlayers.length} Zusagen! Das riecht nach Champions-League-Niveau auf Rasen.`
       : `📋 Bisher ${selectedPlayers.length} Zusagen – Kader steht, Ausreden zählen nicht mehr.`
   );
 
@@ -199,7 +199,7 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
   }
 
   if (isRain) {
-    lines.push("🌧️ Regen in Sicht: Heute gewinnt das Team mit den besseren Stollen und schlechteren Frisuren-Sorgen.");
+    lines.push("🌧️ Regen in Sicht: Das wird eine matschige Angelegenheit – unser Rasen ist bei Regen super empfindlich. An den Eckfahnen braucht man Gummistiefel und Schwimmflügel.");
   }
 
   if (isWindy) {
