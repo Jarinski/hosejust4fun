@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
@@ -8,7 +8,9 @@ type TrioPerformance = {
   player2Id: number;
   player3Id: number;
   gamesTogether: number;
+  possibleGamesTogether: number;
   teamGoals: number;
+  winsTogether: number;
 };
 
 type TrioPerformancePageProps = {
@@ -20,6 +22,8 @@ type TrioPerformancePageProps = {
 };
 
 export default async function TrioPerformancePage({ searchParams }: TrioPerformancePageProps) {
+  const MODERN_START_DATE = new Date("2026-01-01T00:00:00.000Z");
+
   const allSeasons = await db
     .select({
       id: seasons.id,
@@ -48,6 +52,7 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
     sortParam === "player3" ||
     sortParam === "games" ||
     sortParam === "goals" ||
+    sortParam === "winRate" ||
     sortParam === "gpg"
       ? sortParam
       : "goals";
@@ -62,14 +67,16 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
         })
         .from(matchParticipants)
         .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-        .where(eq(matches.seasonId, validSeasonId))
+        .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
     : await db
         .select({
           matchId: matchParticipants.matchId,
           playerId: matchParticipants.playerId,
           teamSide: matchParticipants.teamSide,
         })
-        .from(matchParticipants);
+        .from(matchParticipants)
+        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .where(gte(matches.matchDate, MODERN_START_DATE));
 
   const filterUi = (
     <>
@@ -130,13 +137,15 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
         })
         .from(goalEvents)
         .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-        .where(eq(matches.seasonId, validSeasonId))
+        .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
     : await db
         .select({
           matchId: goalEvents.matchId,
           teamSide: goalEvents.teamSide,
         })
-        .from(goalEvents);
+        .from(goalEvents)
+        .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+        .where(gte(matches.matchDate, MODERN_START_DATE));
 
   const teamGoalsByMatch = new Map<string, number>();
 
@@ -146,12 +155,28 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
   }
 
   const teamsByMatch = new Map<string, Set<number>>();
+  const appearancesByPlayer = new Map<number, Set<number>>();
+  const matchScoreById = new Map<number, { team1Score: number; team2Score: number }>();
+
+  for (const participant of participants) {
+    if (matchScoreById.has(participant.matchId)) {
+      continue;
+    }
+
+    const team1Score = teamGoalsByMatch.get(`${participant.matchId}-team_1`) ?? 0;
+    const team2Score = teamGoalsByMatch.get(`${participant.matchId}-team_2`) ?? 0;
+    matchScoreById.set(participant.matchId, { team1Score, team2Score });
+  }
 
   for (const participant of participants) {
     const key = `${participant.matchId}-${participant.teamSide}`;
     const teamPlayers = teamsByMatch.get(key) ?? new Set<number>();
     teamPlayers.add(participant.playerId);
     teamsByMatch.set(key, teamPlayers);
+
+    const playerAppearances = appearancesByPlayer.get(participant.playerId) ?? new Set<number>();
+    playerAppearances.add(participant.matchId);
+    appearancesByPlayer.set(participant.playerId, playerAppearances);
   }
 
   const trioStats = new Map<string, TrioPerformance>();
@@ -177,11 +202,25 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
             player2Id,
             player3Id,
             gamesTogether: 0,
+            possibleGamesTogether: 0,
             teamGoals: 0,
+            winsTogether: 0,
           };
+
+          const [matchIdRaw, teamSide] = teamKey.split("-");
+          const matchId = Number(matchIdRaw);
+          const matchScore = matchScoreById.get(matchId);
+          const didWin =
+            !!matchScore &&
+            (teamSide === "team_1"
+              ? matchScore.team1Score > matchScore.team2Score
+              : matchScore.team2Score > matchScore.team1Score);
 
           current.gamesTogether += 1;
           current.teamGoals += teamGoals;
+          if (didWin) {
+            current.winsTogether += 1;
+          }
 
           trioStats.set(trioKey, current);
         }
@@ -190,6 +229,32 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
   }
 
   const trioPerformance = Array.from(trioStats.values());
+
+  for (const entry of trioPerformance) {
+    const appearances1 = appearancesByPlayer.get(entry.player1Id) ?? new Set<number>();
+    const appearances2 = appearancesByPlayer.get(entry.player2Id) ?? new Set<number>();
+    const appearances3 = appearancesByPlayer.get(entry.player3Id) ?? new Set<number>();
+
+    let possibleGamesTogether = 0;
+
+    const appearancesWithPlayer = [
+      { playerKey: 1, set: appearances1 },
+      { playerKey: 2, set: appearances2 },
+      { playerKey: 3, set: appearances3 },
+    ].sort((a, b) => a.set.size - b.set.size);
+
+    const smallestSet = appearancesWithPlayer[0].set;
+    const otherSet1 = appearancesWithPlayer[1].set;
+    const otherSet2 = appearancesWithPlayer[2].set;
+
+    for (const matchId of smallestSet) {
+      if (otherSet1.has(matchId) && otherSet2.has(matchId)) {
+        possibleGamesTogether += 1;
+      }
+    }
+
+    entry.possibleGamesTogether = possibleGamesTogether;
+  }
 
   if (trioPerformance.length === 0) {
     return (
@@ -245,6 +310,10 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
           entry.gamesTogether > 0
             ? (entry.teamGoals / entry.gamesTogether).toFixed(2)
             : "0.00",
+        winRate:
+          entry.gamesTogether > 0
+            ? (entry.winsTogether / entry.gamesTogether) * 100
+            : 0,
       };
     });
 
@@ -295,6 +364,18 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
       return b.teamGoals - a.teamGoals;
     }
 
+    if (sortKey === "winRate") {
+      if (a.winRate !== b.winRate) {
+        return sortDir === "asc" ? a.winRate - b.winRate : b.winRate - a.winRate;
+      }
+
+      if (a.gamesTogether !== b.gamesTogether) {
+        return b.gamesTogether - a.gamesTogether;
+      }
+
+      return b.teamGoals - a.teamGoals;
+    }
+
     if (a.teamGoals !== b.teamGoals) {
       return sortDir === "asc" ? a.teamGoals - b.teamGoals : b.teamGoals - a.teamGoals;
     }
@@ -317,7 +398,7 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
   });
 
   const buildSortHref = (
-    column: "player1" | "player2" | "player3" | "games" | "goals" | "gpg",
+    column: "player1" | "player2" | "player3" | "games" | "goals" | "winRate" | "gpg",
   ) => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
@@ -333,7 +414,7 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
   };
 
   const sortArrow = (
-    column: "player1" | "player2" | "player3" | "games" | "goals" | "gpg",
+    column: "player1" | "player2" | "player3" | "games" | "goals" | "winRate" | "gpg",
   ) => {
     if (sortKey !== column) {
       return "↕";
@@ -382,6 +463,11 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
                   </Link>
                 </th>
                 <th className="px-4 py-3 text-left">
+                  <Link href={buildSortHref("winRate")} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                    Gemeinsame Siegesquote <span className="text-xs">{sortArrow("winRate")}</span>
+                  </Link>
+                </th>
+                <th className="px-4 py-3 text-left">
                   <Link href={buildSortHref("gpg")} className="inline-flex items-center gap-1 hover:text-zinc-900">
                     Tore pro Spiel <span className="text-xs">{sortArrow("gpg")}</span>
                   </Link>
@@ -391,11 +477,12 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
             <tbody>
               {sortedRows.map((entry) => (
                 <tr key={`${entry.player1Id}-${entry.player2Id}-${entry.player3Id}`} className="border-t border-zinc-300">
-                  <td className="px-4 py-3">{entry.player1Name}</td>
-                  <td className="px-4 py-3">{entry.player2Name}</td>
-                  <td className="px-4 py-3">{entry.player3Name}</td>
-                  <td className="px-4 py-3">{entry.gamesTogether}</td>
+                  <td className="px-4 py-3"><Link href={`/admin/players/${entry.player1Id}`} className="hover:underline">{entry.player1Name}</Link></td>
+                  <td className="px-4 py-3"><Link href={`/admin/players/${entry.player2Id}`} className="hover:underline">{entry.player2Name}</Link></td>
+                  <td className="px-4 py-3"><Link href={`/admin/players/${entry.player3Id}`} className="hover:underline">{entry.player3Name}</Link></td>
+                  <td className="px-4 py-3">{entry.gamesTogether}/{entry.possibleGamesTogether}</td>
                   <td className="px-4 py-3">{entry.teamGoals}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-700">{entry.winRate.toFixed(1)}%</td>
                   <td className="px-4 py-3 font-semibold text-red-300">{entry.goalsPerGame}</td>
                 </tr>
               ))}

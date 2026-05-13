@@ -115,6 +115,14 @@ export default async function ScorerAssistCombosPage({
     return a.scorerName.localeCompare(b.scorerName, "de");
   });
 
+  const totalAssistsByAssisterId = new Map<number, number>();
+  for (const combo of combos) {
+    totalAssistsByAssisterId.set(
+      combo.assisterId,
+      (totalAssistsByAssisterId.get(combo.assisterId) ?? 0) + combo.count,
+    );
+  }
+
   const buildSortHref = (column: "assister" | "scorer" | "count") => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
@@ -204,9 +212,11 @@ export default async function ScorerAssistCombosPage({
           <tbody>
             {sortedCombos.map((entry) => (
               <tr key={`${entry.assisterId}-${entry.scorerId}`} className="border-t border-zinc-300">
-                <td className="px-4 py-3">{entry.assisterName}</td>
-                <td className="px-4 py-3">{entry.scorerName}</td>
-                <td className="px-4 py-3 font-semibold text-red-300">{entry.count}</td>
+                <td className="px-4 py-3"><Link href={`/admin/players/${entry.assisterId}`} className="hover:underline">{entry.assisterName}</Link></td>
+                <td className="px-4 py-3"><Link href={`/admin/players/${entry.scorerId}`} className="hover:underline">{entry.scorerName}</Link></td>
+                <td className="px-4 py-3 font-semibold text-red-300">
+                  {entry.count}/{totalAssistsByAssisterId.get(entry.assisterId) ?? entry.count}
+                </td>
               </tr>
             ))}
           </tbody>

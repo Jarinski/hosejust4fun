@@ -58,9 +58,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   const sortKey =
     sortParam === "player" ||
     sortParam === "goals" ||
-    sortParam === "goalsPerGame" ||
-    sortParam === "scorerPoints" ||
-    sortParam === "scorerPointsPerGame"
+    sortParam === "goalsPerGame"
       ? sortParam
       : "goals";
   const sortDir = dirParam === "asc" ? "asc" : "desc";
@@ -69,7 +67,6 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   let ownGoalColumnAvailable = true;
   let goalkeeperColumnAvailable = true;
   let topScorers: Array<{ playerId: number; playerName: string; goals: number }> = [];
-  let assistsByPlayer = new Map<number, number>();
   let gamesByPlayer = new Map<number, number>();
 
   const queryTopScorers = async (options: { filterOwnGoals: boolean; filterGoalkeepers: boolean }) => {
@@ -143,36 +140,6 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
   const playerIds = topScorers.map((entry) => entry.playerId);
 
   if (playerIds.length > 0) {
-    const assistsRows = validSeasonId
-      ? await db
-          .select({
-            playerId: players.id,
-            assists: sql<number>`count(${goalEvents.id})`,
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(
-            and(
-              eq(matches.seasonId, validSeasonId),
-              eq(goalEvents.isOwnGoal, false),
-              gte(matches.matchDate, MODERN_START_DATE),
-            ),
-          )
-          .groupBy(players.id)
-      : await db
-          .select({
-            playerId: players.id,
-            assists: sql<number>`count(${goalEvents.id})`,
-          })
-          .from(goalEvents)
-          .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
-          .innerJoin(matches, eq(goalEvents.matchId, matches.id))
-          .where(and(eq(goalEvents.isOwnGoal, false), gte(matches.matchDate, MODERN_START_DATE)))
-          .groupBy(players.id);
-
-    assistsByPlayer = new Map(assistsRows.map((row) => [row.playerId, Number(row.assists) || 0]));
-
     const gamesRows = validSeasonId
       ? await db
           .select({
@@ -200,15 +167,11 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
   const rows = topScorers.map((entry) => {
     const games = gamesByPlayer.get(entry.playerId) ?? 0;
-    const assists = assistsByPlayer.get(entry.playerId) ?? 0;
-    const scorerPoints = entry.goals + assists;
 
     return {
       ...entry,
       games,
       goalsPerGame: games > 0 ? entry.goals / games : 0,
-      scorerPoints,
-      scorerPointsPerGame: games > 0 ? scorerPoints / games : 0,
     };
   });
 
@@ -230,24 +193,6 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       return b.goals - a.goals;
     }
 
-    if (sortKey === "scorerPoints") {
-      if (a.scorerPoints !== b.scorerPoints) {
-        return sortDir === "asc" ? a.scorerPoints - b.scorerPoints : b.scorerPoints - a.scorerPoints;
-      }
-
-      return b.goals - a.goals;
-    }
-
-    if (sortKey === "scorerPointsPerGame") {
-      if (a.scorerPointsPerGame !== b.scorerPointsPerGame) {
-        return sortDir === "asc"
-          ? a.scorerPointsPerGame - b.scorerPointsPerGame
-          : b.scorerPointsPerGame - a.scorerPointsPerGame;
-      }
-
-      return b.scorerPoints - a.scorerPoints;
-    }
-
     if (a.goals !== b.goals) {
       return sortDir === "asc" ? a.goals - b.goals : b.goals - a.goals;
     }
@@ -255,7 +200,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     return a.playerName.localeCompare(b.playerName, "de");
   });
 
-  const buildSortHref = (column: "player" | "goals" | "goalsPerGame" | "scorerPoints" | "scorerPointsPerGame") => {
+  const buildSortHref = (column: "player" | "goals" | "goalsPerGame") => {
     const nextDir = sortKey === column && sortDir === "desc" ? "asc" : "desc";
     const query = new URLSearchParams();
 
@@ -269,7 +214,7 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
     return `?${query.toString()}`;
   };
 
-  const sortArrow = (column: "player" | "goals" | "goalsPerGame" | "scorerPoints" | "scorerPointsPerGame") => {
+  const sortArrow = (column: "player" | "goals" | "goalsPerGame") => {
     if (sortKey !== column) {
       return "↕";
     }
@@ -351,26 +296,18 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
                   Tore/Spiel <span className="text-xs">{sortArrow("goalsPerGame")}</span>
                 </Link>
               </th>
-              <th className="px-4 py-3 text-left">
-                <Link href={buildSortHref("scorerPoints")} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                  Scorerpunkte <span className="text-xs">{sortArrow("scorerPoints")}</span>
-                </Link>
-              </th>
-              <th className="px-4 py-3 text-left">
-                <Link href={buildSortHref("scorerPointsPerGame")} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                  Scorerpunkte/Spiel <span className="text-xs">{sortArrow("scorerPointsPerGame")}</span>
-                </Link>
-              </th>
             </tr>
           </thead>
           <tbody>
             {sortedTopScorers.map((entry) => (
               <tr key={entry.playerId} className="border-t border-zinc-300">
-                <td className="px-4 py-3">{entry.playerName}</td>
+                <td className="px-4 py-3">
+                  <Link href={`/admin/players/${entry.playerId}`} className="hover:underline">
+                    {entry.playerName}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.goals}</td>
                 <td className="px-4 py-3">{entry.goalsPerGame.toFixed(2)}</td>
-                <td className="px-4 py-3">{entry.scorerPoints}</td>
-                <td className="px-4 py-3">{entry.scorerPointsPerGame.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

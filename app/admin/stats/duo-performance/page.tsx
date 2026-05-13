@@ -7,6 +7,7 @@ type DuoPerformance = {
   player1Id: number;
   player2Id: number;
   gamesTogether: number;
+  possibleGamesTogether: number;
   teamGoals: number;
   winsTogether: number;
 };
@@ -164,12 +165,17 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
   }
 
   const teamsByMatch = new Map<string, Set<number>>();
+  const appearancesByPlayer = new Map<number, Set<number>>();
 
   for (const participant of participants) {
     const key = `${participant.matchId}-${participant.teamSide}`;
     const teamPlayers = teamsByMatch.get(key) ?? new Set<number>();
     teamPlayers.add(participant.playerId);
     teamsByMatch.set(key, teamPlayers);
+
+    const playerAppearances = appearancesByPlayer.get(participant.playerId) ?? new Set<number>();
+    playerAppearances.add(participant.matchId);
+    appearancesByPlayer.set(participant.playerId, playerAppearances);
   }
 
   const duoStats = new Map<string, DuoPerformance>();
@@ -188,6 +194,7 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
           player1Id,
           player2Id,
           gamesTogether: 0,
+          possibleGamesTogether: 0,
           teamGoals: 0,
           winsTogether: 0,
         };
@@ -214,6 +221,25 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
   }
 
   const duoPerformance = Array.from(duoStats.values());
+
+  for (const entry of duoPerformance) {
+    const appearances1 = appearancesByPlayer.get(entry.player1Id) ?? new Set<number>();
+    const appearances2 = appearancesByPlayer.get(entry.player2Id) ?? new Set<number>();
+
+    let possibleGamesTogether = 0;
+    const [smallerSet, largerSet] =
+      appearances1.size <= appearances2.size
+        ? [appearances1, appearances2]
+        : [appearances2, appearances1];
+
+    for (const matchId of smallerSet) {
+      if (largerSet.has(matchId)) {
+        possibleGamesTogether += 1;
+      }
+    }
+
+    entry.possibleGamesTogether = possibleGamesTogether;
+  }
 
   if (duoPerformance.length === 0) {
     return (
@@ -403,9 +429,9 @@ export default async function DuoPerformancePage({ searchParams }: DuoPerformanc
             <tbody>
               {sortedRows.map((entry) => (
                 <tr key={`${entry.player1Id}-${entry.player2Id}`} className="border-t border-zinc-300">
-                  <td className="px-4 py-3">{entry.player1Name}</td>
-                  <td className="px-4 py-3">{entry.player2Name}</td>
-                  <td className="px-4 py-3">{entry.gamesTogether}</td>
+                  <td className="px-4 py-3"><Link href={`/admin/players/${entry.player1Id}`} className="hover:underline">{entry.player1Name}</Link></td>
+                  <td className="px-4 py-3"><Link href={`/admin/players/${entry.player2Id}`} className="hover:underline">{entry.player2Name}</Link></td>
+                  <td className="px-4 py-3">{entry.gamesTogether}/{entry.possibleGamesTogether}</td>
                   <td className="px-4 py-3">{entry.teamGoals}</td>
                   <td className="px-4 py-3 font-semibold text-emerald-700">{entry.winRate.toFixed(1)}%</td>
                   <td className="px-4 py-3 font-semibold text-red-300">{entry.goalsPerGame}</td>

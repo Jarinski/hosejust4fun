@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
 
@@ -89,6 +89,7 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
   };
 
   let topAssists: Array<{ playerId: number; playerName: string; assists: number }> = [];
+  let assistConnections: Array<{ assistPlayerId: number | null; scorerPlayerId: number }> = [];
   let gamesByPlayer = new Map<number, number>();
 
   try {
@@ -123,6 +124,43 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     }
   }
 
+  const queryAssistConnections = async (options: { filterOwnGoals: boolean; filterGoalkeepers: boolean }) => {
+    const filters = [isNotNull(goalEvents.assistPlayerId)];
+
+    if (options.filterOwnGoals) {
+      filters.push(eq(goalEvents.isOwnGoal, false));
+    }
+
+    if (options.filterGoalkeepers) {
+      filters.push(eq(players.isGoalkeeper, false));
+    }
+
+    if (validSeasonId) {
+      filters.push(eq(matches.seasonId, validSeasonId));
+    }
+
+    filters.push(gte(matches.matchDate, MODERN_START_DATE));
+
+    return db
+      .select({
+        assistPlayerId: goalEvents.assistPlayerId,
+        scorerPlayerId: goalEvents.scorerPlayerId,
+      })
+      .from(goalEvents)
+      .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
+      .innerJoin(matches, eq(goalEvents.matchId, matches.id))
+      .where(and(...filters));
+  };
+
+  try {
+    assistConnections = await queryAssistConnections({
+      filterOwnGoals: ownGoalColumnAvailable,
+      filterGoalkeepers: goalkeeperColumnAvailable,
+    });
+  } catch {
+    assistConnections = [];
+  }
+
   const playerIds = topAssists.map((entry) => entry.playerId);
 
   if (playerIds.length > 0) {
@@ -151,13 +189,54 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
     gamesByPlayer = new Map(gamesRows.map((row) => [row.playerId, Number(row.games) || 0]));
   }
 
+  const scorerIds = Array.from(new Set(assistConnections.map((entry) => entry.scorerPlayerId)));
+  const scorerRows =
+    scorerIds.length > 0
+      ? await db
+          .select({
+            id: players.id,
+            name: players.name,
+          })
+          .from(players)
+          .where(inArray(players.id, scorerIds))
+      : [];
+  const scorerNameById = new Map(scorerRows.map((row) => [row.id, row.name]));
+
+  const topScorerByAssistPlayer = new Map<number, { scorerPlayerId: number; scorerName: string; count: number }>();
+  const pairCounts = new Map<string, number>();
+
+  for (const connection of assistConnections) {
+    if (!connection.assistPlayerId) {
+      continue;
+    }
+
+    const pairKey = `${connection.assistPlayerId}-${connection.scorerPlayerId}`;
+    const nextCount = (pairCounts.get(pairKey) ?? 0) + 1;
+    pairCounts.set(pairKey, nextCount);
+
+    const currentBest = topScorerByAssistPlayer.get(connection.assistPlayerId);
+    const scorerName = scorerNameById.get(connection.scorerPlayerId) ?? `Spieler #${connection.scorerPlayerId}`;
+
+    if (!currentBest || nextCount > currentBest.count || (nextCount === currentBest.count && scorerName.localeCompare(currentBest.scorerName, "de") < 0)) {
+      topScorerByAssistPlayer.set(connection.assistPlayerId, {
+        scorerPlayerId: connection.scorerPlayerId,
+        scorerName,
+        count: nextCount,
+      });
+    }
+  }
+
   const rows = topAssists.map((entry) => {
     const games = gamesByPlayer.get(entry.playerId) ?? 0;
+    const topScorerConnection = topScorerByAssistPlayer.get(entry.playerId);
 
     return {
       ...entry,
       games,
       assistsPerGame: games > 0 ? entry.assists / games : 0,
+      topScorerName: topScorerConnection?.scorerName ?? "-",
+      topScorerCount: topScorerConnection?.count ?? 0,
+      topScorerPlayerId: topScorerConnection?.scorerPlayerId ?? null,
     };
   });
 
@@ -282,14 +361,29 @@ export default async function TopAssistsPage({ searchParams }: TopAssistsPagePro
                   Assists/Spiel <span className="text-xs">{sortArrow("assistsPerGame")}</span>
                 </Link>
               </th>
+              <th className="px-4 py-3 text-left">Häufigster Abnehmer</th>
             </tr>
           </thead>
           <tbody>
             {sortedTopAssists.map((entry) => (
               <tr key={entry.playerId} className="border-t border-zinc-300">
-                <td className="px-4 py-3">{entry.playerName}</td>
+                <td className="px-4 py-3">
+                  <Link href={`/admin/players/${entry.playerId}`} className="hover:underline">
+                    {entry.playerName}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 font-semibold text-red-300">{entry.assists}</td>
                 <td className="px-4 py-3">{entry.assistsPerGame.toFixed(2)}</td>
+                <td className="px-4 py-3">
+                  {entry.topScorerName !== "-" ? (
+                    <>
+                      <Link href={`/admin/players/${entry.topScorerPlayerId}`} className="hover:underline">
+                        {entry.topScorerName}
+                      </Link>{" "}
+                      ({entry.topScorerCount})
+                    </>
+                  ) : "-"}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -679,8 +679,6 @@ export default async function Home() {
     .from(goalEvents)
     .catch(() => [] as Array<{ minute: number | null }>);
 
-  const totalGoalsOverall = allGoalMinuteRows.length;
-
   const totalMatchesPlayed = allMatchesForSeries.length;
   let earlyPhaseGoals = 0;
   let midPhaseGoals = 0;
@@ -928,7 +926,7 @@ export default async function Home() {
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 sm:text-sm">
                 <span>{formatDate(latestMatch.matchDate)}</span>
                 <span>Saison: {latestMatch.seasonName ?? "—"}</span>
-                <span>MVP: {latestMatch.mvpName ?? "nicht vergeben"}</span>
+                <span>MVP: {latestMatch.mvpPlayerId && latestMatch.mvpName ? <Link href={`/admin/players/${latestMatch.mvpPlayerId}`} className="hover:underline">{latestMatch.mvpName}</Link> : "nicht vergeben"}</span>
                 {latestWeatherPresentation ? (
                   <span>
                     Wetter: {latestWeatherPresentation.icon} {latestWeatherPresentation.label}
@@ -1039,9 +1037,18 @@ export default async function Home() {
             </article>
 
             <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Tore insgesamt</p>
-              <p className="mt-2 text-3xl font-extrabold text-zinc-900">{totalGoalsOverall}</p>
-              <p className="mt-1 text-xs text-zinc-500">Alle erfassten Tore in der Datenbank</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Erfolgreichstes Duo</p>
+              <p className="mt-2 text-lg font-semibold text-zinc-900">
+                {bestOverallDuo ? `${bestOverallDuo.playerAName} & ${bestOverallDuo.playerBName}` : "—"}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-emerald-700">
+                {bestOverallDuo ? `${bestOverallDuo.winRatePct}% Siegesquote` : "Keine ausreichenden Daten"}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {bestOverallDuo
+                  ? `${bestOverallDuo.winsTogether}/${bestOverallDuo.gamesTogether} Siege gemeinsam`
+                  : "Mindestens 3 gemeinsame Spiele erforderlich"}
+              </p>
             </article>
 
             <article className="rounded-xl border border-zinc-300 bg-stone-50 p-4">
@@ -1115,7 +1122,7 @@ export default async function Home() {
                       <li key={entry.playerId} className="flex items-center justify-between gap-3">
                         <span className="text-zinc-900">
                           <span className="mr-2 text-zinc-500">#{index + 1}</span>
-                          {entry.playerName}
+                          <Link href={`/admin/players/${entry.playerId}`} className="hover:underline">{entry.playerName}</Link>
                         </span>
                         <span className="font-semibold text-zinc-900">
                           {entry.value} {ranking.unit}
