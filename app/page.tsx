@@ -402,8 +402,13 @@ export default async function Home() {
     .filter((entry) => entry.missedMatches >= 2)
     .sort((a, b) => b.missedMatches - a.missedMatches);
 
-  const playerNameById = new Map(
-    [...upcomingSelectedPlayers, ...upcomingCanceledPlayers].map((player) => [player.id, player.name])
+  const allPlayersForNames = await db
+    .select({ id: players.id, name: players.name })
+    .from(players)
+    .orderBy(asc(players.name));
+
+  const playerNameById = new Map<number, string>(
+    allPlayersForNames.map((player) => [player.id, String(player.name)])
   );
 
   const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number; goalsTogether: number }>();
