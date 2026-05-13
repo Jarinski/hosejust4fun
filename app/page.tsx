@@ -452,6 +452,15 @@ export default async function Home() {
     })
     .filter((duo) => selectedPlayerIdsSet.has(duo.a) && selectedPlayerIdsSet.has(duo.b));
 
+  const compareWinRate = (
+    a: { winsTogether: number; gamesTogether: number },
+    b: { winsTogether: number; gamesTogether: number }
+  ) => {
+    const left = a.winsTogether * b.gamesTogether;
+    const right = b.winsTogether * a.gamesTogether;
+    return left - right;
+  };
+
   const strongestDuo = availableDuoStats
     .filter((duo) => duo.gamesTogether >= 2)
     .map((duo) => ({
@@ -464,7 +473,8 @@ export default async function Home() {
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
-      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      const winRateDiff = compareWinRate(b, a);
+      if (winRateDiff !== 0) return winRateDiff;
       if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
       return a.playerAName.localeCompare(b.playerAName, "de");
     })[0] ?? null;
@@ -487,7 +497,8 @@ export default async function Home() {
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
-      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
+      const winRateDiff = compareWinRate(b, a);
+      if (winRateDiff !== 0) return winRateDiff;
       if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
       return a.playerAName.localeCompare(b.playerAName, "de");
     })[0] ?? null;
