@@ -264,13 +264,13 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
 
       {!ownGoalColumnAvailable ? (
         <p className="mb-4 text-sm text-amber-300">
-          Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt). Topscorer wird ohne Eigentor-Filter berechnet.
+          Eigentor-Daten sind in dieser Datenbank noch nicht verfügbar (Migration fehlt). Die Torschützen-Statistik wird ohne Eigentor-Filter berechnet.
         </p>
       ) : null}
 
       {!goalkeeperColumnAvailable ? (
         <p className="mb-4 text-sm text-amber-300">
-          Torwart-Kennzeichnung ist in dieser Datenbank noch nicht verfügbar (Migration fehlt). Topscorer wird ohne Torwart-Filter berechnet.
+          Torwart-Kennzeichnung ist in dieser Datenbank noch nicht verfügbar (Migration fehlt). Die Torschützen-Statistik wird ohne Torwart-Filter berechnet.
         </p>
       ) : null}
 

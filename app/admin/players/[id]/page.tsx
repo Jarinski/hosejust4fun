@@ -112,7 +112,7 @@ const MIN_APPEARANCES_FOR_RATE_TITLES = 3;
 const TITLE_LABELS: Record<PlayerTitleKey, string> = {
   top_goalscorer: "Torschützenkönig",
   top_assist: "Assistkönig",
-  top_scorer: "Topscorer",
+  top_scorer: "Top-Scorer",
   defensive_wall: "Abwehrbollwerk",
   driving_force: "Antreiber",
 };

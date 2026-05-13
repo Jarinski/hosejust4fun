@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const publicStatsPages = [
   {
-    title: "Topscorer",
-    href: "/stats/topscorer",
+    title: "Top-Torschützen",
+    href: "/stats/torschuetzen",
     description: "Die meisten Tore pro Spieler",
   },
   {

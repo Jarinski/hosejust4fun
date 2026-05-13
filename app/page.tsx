@@ -859,7 +859,7 @@ export default async function Home() {
 
   const statCards = [
     {
-      title: "Topscorer",
+      title: "Top-Scorer",
       leader: topScorers[0]?.playerName ?? "—",
       value: topScorers[0]?.value ?? 0,
       info:
@@ -1105,7 +1105,7 @@ export default async function Home() {
           <h2 className="mb-3 text-lg font-bold sm:text-xl">Rankings</h2>
           <div className="grid gap-3 md:grid-cols-3">
             {[
-              { title: "Topscorer Top 5", data: topScorers, unit: "Scorerpunkte" },
+              { title: "Top-Scorer Top 5", data: topScorers, unit: "Scorerpunkte" },
               { title: "Top Torschützen Top 5", data: topGoalScorers, unit: "Tore" },
               { title: "Top-Assists Top 5", data: topAssists, unit: "Assists" },
               { title: "Top-MVPs Top 5", data: topMvps, unit: "MVP" },

@@ -160,7 +160,7 @@ export default async function LegacyStatsPage({ searchParams }: LegacyStatsPageP
         <h1 className="text-2xl font-semibold">All-Time Statistiken</h1>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <StatList title="Topscorer (Tore)" players={topGoals} />
+          <StatList title="Top-Torschützen" players={topGoals} />
           <StatList title="Assist-Könige" players={topAssists} />
           <StatList title="Scorerpunkte" players={topPoints} />
         </div>

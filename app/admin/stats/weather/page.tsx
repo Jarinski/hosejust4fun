@@ -383,7 +383,7 @@ export default async function WeatherStatsPage() {
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <RankingCard
             title="Schönwetter-Knipser 🌤️"
-            subtitle="Topscorer in Spielen mit 0 mm Niederschlag und mindestens 15 °C"
+            subtitle="Top-Torschützen in Spielen mit 0 mm Niederschlag und mindestens 15 °C"
             valueLabel="Tore"
             rows={sunnyTopScorers}
           />
@@ -404,14 +404,14 @@ export default async function WeatherStatsPage() {
 
           <RankingCard
             title="Eiskalte Knipser"
-            subtitle="Topscorer in Spielen mit Temperatur unter 10 °C"
+            subtitle="Top-Torschützen in Spielen mit Temperatur unter 10 °C"
             valueLabel="Tore"
             rows={coldTopScorers}
           />
 
           <RankingCard
             title="Regen-Spezialisten"
-            subtitle="Topscorer in Spielen mit Regen (Niederschlag ≥ 1 mm oder Regen-Bedingung)"
+            subtitle="Top-Torschützen in Spielen mit Regen (Niederschlag ≥ 1 mm oder Regen-Bedingung)"
             valueLabel="Tore"
             rows={rainTopScorers}
           />
