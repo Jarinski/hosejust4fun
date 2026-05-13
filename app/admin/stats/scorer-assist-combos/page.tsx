@@ -117,9 +117,10 @@ export default async function ScorerAssistCombosPage({
 
   const totalAssistsByAssisterId = new Map<number, number>();
   for (const combo of combos) {
+    const numericCount = Number(combo.count) || 0;
     totalAssistsByAssisterId.set(
       combo.assisterId,
-      (totalAssistsByAssisterId.get(combo.assisterId) ?? 0) + combo.count,
+      (totalAssistsByAssisterId.get(combo.assisterId) ?? 0) + numericCount,
     );
   }
 
