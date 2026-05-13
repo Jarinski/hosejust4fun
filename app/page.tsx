@@ -758,7 +758,7 @@ export default async function Home() {
   const mvpCount = sql<number>`count(${matches.id})`;
   const gamesCount = sql<number>`count(${matchParticipants.id})`;
 
-  const [scorerGoalRows, topAssists, mostGames] = await Promise.all([
+  const [scorerGoalRows, assistRows, mostGames] = await Promise.all([
     db
       .select({
         playerId: players.id,
@@ -779,8 +779,7 @@ export default async function Home() {
       .innerJoin(players, eq(goalEvents.assistPlayerId, players.id))
       .where(isNotNull(goalEvents.assistPlayerId))
       .groupBy(players.id, players.name)
-      .orderBy(desc(assistsCount), asc(players.name))
-      .limit(5),
+      .orderBy(desc(assistsCount), asc(players.name)),
     db
       .select({
         playerId: players.id,
@@ -813,7 +812,7 @@ export default async function Home() {
     });
   }
 
-  for (const row of topAssists) {
+  for (const row of assistRows) {
     const existing = scorerPointsByPlayerId.get(row.playerId);
     if (existing) {
       existing.assists = Number(row.value) || 0;
@@ -834,6 +833,8 @@ export default async function Home() {
     }))
     .sort((a, b) => b.value - a.value || a.playerName.localeCompare(b.playerName, "de"))
     .slice(0, 5);
+
+  const topAssists = assistRows.slice(0, 5);
 
   const topMvps = mvpColumnAvailable
     ? await db
