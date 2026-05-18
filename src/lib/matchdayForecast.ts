@@ -14,6 +14,8 @@ type DuoForecast = {
   winRatePct: number;
   goalsTogether?: number;
   goalsPerGame?: number;
+  concededTogether?: number;
+  concededPerGame?: number;
 };
 
 type ReturningPlayer = {
@@ -109,14 +111,17 @@ export function buildMatchdayForecast(input: MatchdayForecastInput) {
       return `${duo.playerAName} + ${duo.playerBName}: ${goalsPart}, ${duo.gamesTogether} gemeinsame Spiele, Siegquote ${duo.winRatePct}%`;
     });
 
-    lines.push(`🎯 Torgefährliche Gewinner-Duos: ${topLines.join(" · ")}.`);
+    lines.push(`🎯 Torgefährliche Duos (nur echte Scorer): ${topLines.join(" · ")}.`);
   }
 
   if (weakestAvailableDuos.length > 0) {
-    const flopLines = weakestAvailableDuos.slice(0, 2).map(
-      (duo) => `${duo.playerAName} + ${duo.playerBName} (${duo.winRatePct}% Siegquote)`
-    );
-    lines.push(`⚠️ Eher schwierig bisher: ${flopLines.join(" · ")}.`);
+    const defensiveLines = weakestAvailableDuos.slice(0, 2).map((duo) => {
+      if (duo.concededPerGame !== undefined && duo.concededTogether !== undefined) {
+        return `${duo.playerAName} + ${duo.playerBName}: ${duo.concededTogether} Gegentore (${duo.concededPerGame.toFixed(2)}/Spiel), ${duo.gamesTogether} gemeinsame Spiele`;
+      }
+      return `${duo.playerAName} + ${duo.playerBName} (${duo.winRatePct}% Siegquote)`;
+    });
+    lines.push(`🧱 Defensivstabilste Duos (wenigste Gegentore): ${defensiveLines.join(" · ")}.`);
   }
 
   if (streakPlayers.length > 0) {

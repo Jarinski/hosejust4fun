@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import {
   goalEvents,
+  legacyPlayerCareerStats,
   matchParticipants,
   matchWeather,
   matchdayParticipants,
@@ -245,10 +246,43 @@ export default async function MatchdayPage({
     .filter((entry) => entry.missedMatches >= 2)
     .sort((a, b) => b.missedMatches - a.missedMatches);
 
+  const allNonOwnGoalsForForecast = await loadGoalsForMatches(historicalMatchIds);
+  const currentScorerSet = new Set<number>();
+  for (const goal of allNonOwnGoalsForForecast) {
+    if (goal.isOwnGoal) continue;
+    currentScorerSet.add(goal.scorerPlayerId);
+    if (goal.assistPlayerId !== null) currentScorerSet.add(goal.assistPlayerId);
+  }
+
+  const legacyRows = await db
+    .select({
+      playerName: legacyPlayerCareerStats.playerName,
+      games: legacyPlayerCareerStats.games,
+      goals: legacyPlayerCareerStats.goals,
+      assists: legacyPlayerCareerStats.assists,
+    })
+    .from(legacyPlayerCareerStats)
+    .catch(() => [] as Array<{ playerName: string; games: number; goals: number; assists: number }>);
+
+  const legacyByName = new Map(legacyRows.map((r) => [r.playerName.toLowerCase(), r]));
+  const offensivelyRelevantConfirmedIds = new Set(
+    selectedPlayers
+      .filter((p) => {
+        if (currentScorerSet.has(p.id)) return true;
+        const legacy = legacyByName.get(p.name.toLowerCase());
+        if (!legacy || legacy.games <= 0) return false;
+        const goalsPerGame = legacy.goals / legacy.games;
+        const assistsPerGame = legacy.assists / legacy.games;
+        return goalsPerGame >= 0.2 || assistsPerGame >= 0.2;
+      })
+      .map((p) => p.id)
+  );
+
   type DuoStats = {
     gamesTogether: number;
     winsTogether: number;
     goalsTogether: number;
+    concededTogether: number;
   };
 
   const duoStatsByKey = new Map<string, DuoStats>();
@@ -273,12 +307,14 @@ export default async function MatchdayPage({
           const a = playerIds[i]!;
           const b = playerIds[j]!;
           const key = `${a}-${b}`;
-          const prev = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0, goalsTogether: 0 };
+          const prev = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0, goalsTogether: 0, concededTogether: 0 };
           const goalsInMatch = won ? Math.max(match.team1Score, match.team2Score) : Math.min(match.team1Score, match.team2Score);
+          const concededInMatch = won ? Math.min(match.team1Score, match.team2Score) : Math.max(match.team1Score, match.team2Score);
           duoStatsByKey.set(key, {
             gamesTogether: prev.gamesTogether + 1,
             winsTogether: prev.winsTogether + (won ? 1 : 0),
             goalsTogether: prev.goalsTogether + goalsInMatch,
+            concededTogether: prev.concededTogether + concededInMatch,
           });
         }
       }
@@ -310,6 +346,8 @@ export default async function MatchdayPage({
           winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
           goalsTogether: duo.goalsTogether,
           goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+          concededTogether: duo.concededTogether,
+          concededPerGame: duo.concededTogether / duo.gamesTogether,
         }))
         .sort((a, b) => {
           if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
@@ -334,6 +372,8 @@ export default async function MatchdayPage({
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
@@ -341,7 +381,9 @@ export default async function MatchdayPage({
       return a.playerAName.localeCompare(b.playerAName, "de");
     })[0] ?? null;
 
-  const bestAvailableDuo = Array.from(duoStatsByKey.entries())
+  const bestAvailableDuo = strongestDuo;
+
+  const topScoringWinningDuos = Array.from(duoStatsByKey.entries())
     .map(([key, stats]) => {
       const [aRaw, bRaw] = key.split("-");
       const a = Number(aRaw);
@@ -352,7 +394,9 @@ export default async function MatchdayPage({
       (duo) =>
         confirmedSet.has(duo.a) &&
         confirmedSet.has(duo.b) &&
-        duo.gamesTogether >= 2
+        duo.gamesTogether >= 2 &&
+        offensivelyRelevantConfirmedIds.has(duo.a) &&
+        offensivelyRelevantConfirmedIds.has(duo.b)
     )
     .map((duo) => ({
       playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
@@ -362,29 +406,8 @@ export default async function MatchdayPage({
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
-    }))
-    .sort((a, b) => {
-      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
-      if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
-      return a.playerAName.localeCompare(b.playerAName, "de");
-    })[0] ?? null;
-
-  const topScoringWinningDuos = Array.from(duoStatsByKey.entries())
-    .map(([key, stats]) => {
-      const [aRaw, bRaw] = key.split("-");
-      const a = Number(aRaw);
-      const b = Number(bRaw);
-      return { a, b, ...stats };
-    })
-    .filter((duo) => confirmedSet.has(duo.a) && confirmedSet.has(duo.b) && duo.gamesTogether >= 2)
-    .map((duo) => ({
-      playerAName: playerNameById.get(duo.a) ?? `Spieler #${duo.a}`,
-      playerBName: playerNameById.get(duo.b) ?? `Spieler #${duo.b}`,
-      gamesTogether: duo.gamesTogether,
-      winsTogether: duo.winsTogether,
-      winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
-      goalsTogether: duo.goalsTogether,
-      goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       if ((b.goalsPerGame ?? 0) !== (a.goalsPerGame ?? 0)) return (b.goalsPerGame ?? 0) - (a.goalsPerGame ?? 0);
@@ -410,10 +433,12 @@ export default async function MatchdayPage({
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
-      if (a.winRatePct !== b.winRatePct) return a.winRatePct - b.winRatePct;
-      if ((a.goalsPerGame ?? 0) !== (b.goalsPerGame ?? 0)) return (a.goalsPerGame ?? 0) - (b.goalsPerGame ?? 0);
+      if ((a.concededPerGame ?? 0) !== (b.concededPerGame ?? 0)) return (a.concededPerGame ?? 0) - (b.concededPerGame ?? 0);
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
       if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
       return a.playerAName.localeCompare(b.playerAName, "de");
     })

@@ -4,6 +4,7 @@ import { asc, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import {
   goalEvents,
+  legacyPlayerCareerStats,
   matchParticipants,
   matchdayParticipants,
   matchdays,
@@ -411,7 +412,47 @@ export default async function Home() {
     allPlayersForNames.map((player) => [player.id, String(player.name)])
   );
 
-  const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number; goalsTogether: number }>();
+  const allNonOwnGoalsForForecast = historicalMatchIdsForForecast.length
+    ? await db
+        .select({ scorerPlayerId: goalEvents.scorerPlayerId, assistPlayerId: goalEvents.assistPlayerId, isOwnGoal: goalEvents.isOwnGoal })
+        .from(goalEvents)
+        .where(inArray(goalEvents.matchId, historicalMatchIdsForForecast))
+        .catch(async () => {
+          const legacyGoals = await db
+            .select({ scorerPlayerId: goalEvents.scorerPlayerId, assistPlayerId: goalEvents.assistPlayerId })
+            .from(goalEvents)
+            .where(inArray(goalEvents.matchId, historicalMatchIdsForForecast));
+          return legacyGoals.map((g) => ({ ...g, isOwnGoal: false }));
+        })
+    : [];
+
+  const currentScorerSet = new Set<number>();
+  for (const goal of allNonOwnGoalsForForecast) {
+    if (goal.isOwnGoal) continue;
+    currentScorerSet.add(goal.scorerPlayerId);
+    if (goal.assistPlayerId !== null) currentScorerSet.add(goal.assistPlayerId);
+  }
+
+  const legacyRows = await db
+    .select({ playerName: legacyPlayerCareerStats.playerName, games: legacyPlayerCareerStats.games, goals: legacyPlayerCareerStats.goals, assists: legacyPlayerCareerStats.assists })
+    .from(legacyPlayerCareerStats)
+    .catch(() => [] as Array<{ playerName: string; games: number; goals: number; assists: number }>);
+
+  const legacyByName = new Map(legacyRows.map((r) => [r.playerName.toLowerCase(), r]));
+  const offensivelyRelevantSelectedIds = new Set(
+    upcomingSelectedPlayers
+      .filter((p) => {
+        if (currentScorerSet.has(p.id)) return true;
+        const legacy = legacyByName.get(p.name.toLowerCase());
+        if (!legacy || legacy.games <= 0) return false;
+        const goalsPerGame = legacy.goals / legacy.games;
+        const assistsPerGame = legacy.assists / legacy.games;
+        return goalsPerGame >= 0.2 || assistsPerGame >= 0.2;
+      })
+      .map((p) => p.id)
+  );
+
+  const duoStatsByKey = new Map<string, { gamesTogether: number; winsTogether: number; goalsTogether: number; concededTogether: number }>();
 
   for (const match of historicalMatchesForForecast) {
     const team1 = historicalParticipantsForForecast
@@ -433,12 +474,14 @@ export default async function Home() {
           const a = playerIds[i]!;
           const b = playerIds[j]!;
           const key = `${a}-${b}`;
-          const previous = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0, goalsTogether: 0 };
+          const previous = duoStatsByKey.get(key) ?? { gamesTogether: 0, winsTogether: 0, goalsTogether: 0, concededTogether: 0 };
           const goalsInMatch = won ? Math.max(match.team1Score, match.team2Score) : Math.min(match.team1Score, match.team2Score);
+          const concededInMatch = won ? Math.min(match.team1Score, match.team2Score) : Math.max(match.team1Score, match.team2Score);
           duoStatsByKey.set(key, {
             gamesTogether: previous.gamesTogether + 1,
             winsTogether: previous.winsTogether + (won ? 1 : 0),
             goalsTogether: previous.goalsTogether + goalsInMatch,
+            concededTogether: previous.concededTogether + concededInMatch,
           });
         }
       }
@@ -476,6 +519,8 @@ export default async function Home() {
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       const winRateDiff = compareWinRate(b, a);
@@ -500,6 +545,8 @@ export default async function Home() {
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       const winRateDiff = compareWinRate(b, a);
@@ -511,7 +558,12 @@ export default async function Home() {
   const bestAvailableDuo = strongestDuo;
 
   const topScoringWinningDuos = availableDuoStats
-    .filter((duo) => duo.gamesTogether >= 2)
+    .filter(
+      (duo) =>
+        duo.gamesTogether >= 2 &&
+        offensivelyRelevantSelectedIds.has(duo.a) &&
+        offensivelyRelevantSelectedIds.has(duo.b)
+    )
     .map((duo) => ({
       playerAName: String(playerNameById.get(duo.a) ?? `Spieler #${duo.a}`),
       playerBName: String(playerNameById.get(duo.b) ?? `Spieler #${duo.b}`),
@@ -520,6 +572,8 @@ export default async function Home() {
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
       if ((b.goalsPerGame ?? 0) !== (a.goalsPerGame ?? 0)) return (b.goalsPerGame ?? 0) - (a.goalsPerGame ?? 0);
@@ -539,10 +593,12 @@ export default async function Home() {
       winRatePct: Math.round((duo.winsTogether / duo.gamesTogether) * 100),
       goalsTogether: duo.goalsTogether,
       goalsPerGame: duo.goalsTogether / duo.gamesTogether,
+      concededTogether: duo.concededTogether,
+      concededPerGame: duo.concededTogether / duo.gamesTogether,
     }))
     .sort((a, b) => {
-      if (a.winRatePct !== b.winRatePct) return a.winRatePct - b.winRatePct;
-      if ((a.goalsPerGame ?? 0) !== (b.goalsPerGame ?? 0)) return (a.goalsPerGame ?? 0) - (b.goalsPerGame ?? 0);
+      if ((a.concededPerGame ?? 0) !== (b.concededPerGame ?? 0)) return (a.concededPerGame ?? 0) - (b.concededPerGame ?? 0);
+      if (b.winRatePct !== a.winRatePct) return b.winRatePct - a.winRatePct;
       if (b.gamesTogether !== a.gamesTogether) return b.gamesTogether - a.gamesTogether;
       return a.playerAName.localeCompare(b.playerAName, "de");
     })
