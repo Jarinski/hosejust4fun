@@ -29,6 +29,38 @@ export type WeatherSnapshot = {
   humidityPct: number | null;
 };
 
+const FETCH_TIMEOUT_MS = 15000;
+const FETCH_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 750;
+
+export const EMPTY_WEATHER: WeatherSnapshot = {
+  temperatureC: null,
+  feelsLikeC: null,
+  conditionLabel: null,
+  precipMm: null,
+  windKmh: null,
+  humidityPct: null,
+};
+
+// Eine Zeile gilt nur mit Temperatur als echter Datensatz. Platzhalter-Zeilen
+// (Abruf fehlgeschlagen) sollen bei jedem weiteren Aufruf neu geholt werden.
+export function hasUsableWeather(snapshot: {
+  temperatureC: number | null;
+}) {
+  return snapshot.temperatureC !== null;
+}
+
+function toWeatherColumns(snapshot: WeatherSnapshot) {
+  return {
+    temperatureC: snapshot.temperatureC,
+    feelsLikeC: snapshot.feelsLikeC,
+    conditionLabel: snapshot.conditionLabel,
+    precipMm: snapshot.precipMm,
+    windKmh: snapshot.windKmh,
+    humidityPct: snapshot.humidityPct !== null ? Math.round(snapshot.humidityPct) : null,
+  };
+}
+
 function weatherCodeToLabel(code: number | null) {
   if (code === null) return null;
   if (code === 0) return "Klar";
@@ -117,7 +149,7 @@ function chooseWeatherEndpoint(matchDateIso: string) {
   return new URL(baseUrl);
 }
 
-export async function fetchWeatherForMatchDate(matchDateIso: string): Promise<WeatherSnapshot> {
+async function requestWeather(matchDateIso: string) {
   const weatherUrl = chooseWeatherEndpoint(matchDateIso);
   weatherUrl.searchParams.set("latitude", String(HOLM_SEPPENSEN.latitude));
   weatherUrl.searchParams.set("longitude", String(HOLM_SEPPENSEN.longitude));
@@ -129,27 +161,40 @@ export async function fetchWeatherForMatchDate(matchDateIso: string): Promise<We
     "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,relative_humidity_2m,weather_code"
   );
 
-  const response = await fetch(weatherUrl.toString(), {
-    cache: "no-store",
-    signal: AbortSignal.timeout(7000),
-  });
+  let lastError: unknown = new Error("Open-Meteo: kein Abrufversuch ausgeführt.");
 
-  if (!response.ok) {
-    throw new Error(`Open-Meteo Fehler: ${response.status}`);
+  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(weatherUrl.toString(), {
+        cache: "no-store",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Open-Meteo Fehler: ${response.status}`);
+      }
+
+      return (await response.json()) as OpenMeteoHourlyResponse;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < FETCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+    }
   }
 
-  const data = (await response.json()) as OpenMeteoHourlyResponse;
+  throw lastError;
+}
+
+export async function fetchWeatherForMatchDate(matchDateIso: string): Promise<WeatherSnapshot> {
+  const data = await requestWeather(matchDateIso);
   const times = data.hourly?.time ?? [];
 
   if (times.length === 0) {
-    return {
-      temperatureC: null,
-      feelsLikeC: null,
-      conditionLabel: "Wetterdaten nicht verfügbar",
-      precipMm: null,
-      windKmh: null,
-      humidityPct: null,
-    };
+    // Als Fehler behandeln, damit ein leeres Ergebnis nicht als gültiger
+    // Datensatz gespeichert wird und der nächste Aufruf es erneut versucht.
+    throw new Error(`Open-Meteo lieferte keine Stundenwerte für ${matchDateIso}.`);
   }
 
   const index = pickHourIndex(times);
@@ -168,7 +213,10 @@ export async function fetchWeatherForMatchDate(matchDateIso: string): Promise<We
   };
 }
 
-export async function ensureWeatherStoredForMatch(matchId: number, matchDate: Date): Promise<WeatherSnapshot> {
+export async function ensureWeatherStoredForMatch(
+  matchId: number,
+  matchDate: Date | string,
+): Promise<WeatherSnapshot> {
   const existingRow = await db
     .select({
       temperatureC: matchWeather.temperatureC,
@@ -182,39 +230,43 @@ export async function ensureWeatherStoredForMatch(matchId: number, matchDate: Da
     .where(eq(matchWeather.matchId, matchId))
     .limit(1);
 
-  if (existingRow[0]) {
-    return existingRow[0];
+  const existing = existingRow[0] ?? null;
+
+  if (existing && hasUsableWeather(existing)) {
+    return existing;
   }
 
-  const matchDateIso = toIsoDateInBerlin(matchDate);
+  // Strings kommen bereits als "YYYY-MM-DD" aus dem Formular und werden nicht
+  // über Date geführt, damit die Server-Zeitzone das Datum nicht verschiebt.
+  const matchDateIso = typeof matchDate === "string" ? matchDate : toIsoDateInBerlin(matchDate);
 
-  let weatherData: WeatherSnapshot = {
-    temperatureC: null,
-    feelsLikeC: null,
-    conditionLabel: "Wetterdaten nicht verfügbar",
-    precipMm: null,
-    windKmh: null,
-    humidityPct: null,
-  };
+  let weatherData: WeatherSnapshot | null = null;
 
   try {
     weatherData = await fetchWeatherForMatchDate(matchDateIso);
   } catch {
-    // Match soll trotzdem einen fixierten Wetter-Datensatz erhalten.
+    // Abruf fehlgeschlagen – der nächste Aufruf versucht es erneut.
   }
+
+  if (weatherData === null || !hasUsableWeather(weatherData)) {
+    if (!existing) {
+      // Platzhalter anlegen, damit das Match einen Datensatz hat. Ohne Werte,
+      // damit er beim nächsten Aufruf als nachladbar erkannt wird.
+      await db
+        .insert(matchWeather)
+        .values({ matchId, ...toWeatherColumns(EMPTY_WEATHER) })
+        .onConflictDoNothing({ target: matchWeather.matchId });
+    }
+
+    return existing ?? EMPTY_WEATHER;
+  }
+
+  const columns = toWeatherColumns(weatherData);
 
   await db
     .insert(matchWeather)
-    .values({
-      matchId,
-      temperatureC: weatherData.temperatureC,
-      feelsLikeC: weatherData.feelsLikeC,
-      conditionLabel: weatherData.conditionLabel,
-      precipMm: weatherData.precipMm,
-      windKmh: weatherData.windKmh,
-      humidityPct: weatherData.humidityPct !== null ? Math.round(weatherData.humidityPct) : null,
-    })
-    .onConflictDoNothing({ target: matchWeather.matchId });
+    .values({ matchId, ...columns })
+    .onConflictDoUpdate({ target: matchWeather.matchId, set: columns });
 
   return weatherData;
 }

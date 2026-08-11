@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
-import { matches, matchWeather, seasons } from "@/src/db/schema";
+import { matches, seasons } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
-import { fetchWeatherForMatchDate, type WeatherSnapshot } from "@/src/lib/weather";
+import { ensureWeatherStoredForMatch } from "@/src/lib/weather";
 
 export default async function NewMatchPage({
   searchParams,
@@ -35,21 +35,6 @@ export default async function NewMatchPage({
       redirect("/admin/matches/new?error=1");
     }
 
-    let weatherData: WeatherSnapshot = {
-      temperatureC: null,
-      feelsLikeC: null,
-      conditionLabel: "Wetterdaten nicht verfügbar",
-      precipMm: null,
-      windKmh: null,
-      humidityPct: null,
-    };
-
-    try {
-      weatherData = await fetchWeatherForMatchDate(matchDate);
-    } catch {
-      // Falls Open-Meteo fehlschlägt, wird das Match trotzdem angelegt.
-    }
-
     const insertedMatch = await db
       .insert(matches)
       .values({
@@ -66,15 +51,9 @@ export default async function NewMatchPage({
       redirect("/admin/matches/new?error=1");
     }
 
-    await db.insert(matchWeather).values({
-      matchId: createdMatchId,
-      temperatureC: weatherData.temperatureC,
-      feelsLikeC: weatherData.feelsLikeC,
-      conditionLabel: weatherData.conditionLabel,
-      precipMm: weatherData.precipMm,
-      windKmh: weatherData.windKmh,
-      humidityPct: weatherData.humidityPct !== null ? Math.round(weatherData.humidityPct) : null,
-    });
+    // Schlägt der Abruf fehl, bleibt eine leere Zeile stehen, die beim
+    // nächsten Öffnen des Spiels automatisch nachgeladen wird.
+    await ensureWeatherStoredForMatch(createdMatchId, matchDate);
 
     redirect("/admin/matches/new?success=1");
   }

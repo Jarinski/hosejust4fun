@@ -210,15 +210,9 @@ export default async function MatchDetailPage({
     );
   }
 
-  if (
-    weatherTableAvailable &&
-    match.weatherCondition === null &&
-    match.weatherTemperatureC === null &&
-    match.weatherFeelsLikeC === null &&
-    match.weatherPrecipMm === null &&
-    match.weatherWindKmh === null &&
-    match.weatherHumidityPct === null
-  ) {
+  // Die Temperatur ist das Leitfeld: fehlt sie, ist die Zeile ein Platzhalter
+  // aus einem fehlgeschlagenen Abruf und wird hier nachgeladen.
+  if (weatherTableAvailable && match.weatherTemperatureC === null) {
     try {
       const weatherData = await ensureWeatherStoredForMatch(match.id, match.matchDate);
       match = {
