@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
 import {
   goalEvents,
-  matchParticipants,
+  matchParticipantPrimary,
   matches,
   matchWeather,
   players,
@@ -207,38 +207,38 @@ export default async function WeatherStatsPage() {
       coldMatchIds.length
         ? db
             .select({
-              matchId: matchParticipants.matchId,
-              playerId: matchParticipants.playerId,
+              matchId: matchParticipantPrimary.matchId,
+              playerId: matchParticipantPrimary.playerId,
             })
-            .from(matchParticipants)
-            .where(inArray(matchParticipants.matchId, coldMatchIds))
+            .from(matchParticipantPrimary)
+            .where(inArray(matchParticipantPrimary.matchId, coldMatchIds))
         : Promise.resolve([] as ParticipantRow[]),
       rainMatchIds.length
         ? db
             .select({
-              matchId: matchParticipants.matchId,
-              playerId: matchParticipants.playerId,
+              matchId: matchParticipantPrimary.matchId,
+              playerId: matchParticipantPrimary.playerId,
             })
-            .from(matchParticipants)
-            .where(inArray(matchParticipants.matchId, rainMatchIds))
+            .from(matchParticipantPrimary)
+            .where(inArray(matchParticipantPrimary.matchId, rainMatchIds))
         : Promise.resolve([] as ParticipantRow[]),
       badWeatherMatchIds.length
         ? db
             .select({
-              matchId: matchParticipants.matchId,
-              playerId: matchParticipants.playerId,
+              matchId: matchParticipantPrimary.matchId,
+              playerId: matchParticipantPrimary.playerId,
             })
-            .from(matchParticipants)
-            .where(inArray(matchParticipants.matchId, badWeatherMatchIds))
+            .from(matchParticipantPrimary)
+            .where(inArray(matchParticipantPrimary.matchId, badWeatherMatchIds))
         : Promise.resolve([] as ParticipantRow[]),
       sunnyMatchIds.length
         ? db
             .select({
-              matchId: matchParticipants.matchId,
-              playerId: matchParticipants.playerId,
+              matchId: matchParticipantPrimary.matchId,
+              playerId: matchParticipantPrimary.playerId,
             })
-            .from(matchParticipants)
-            .where(inArray(matchParticipants.matchId, sunnyMatchIds))
+            .from(matchParticipantPrimary)
+            .where(inArray(matchParticipantPrimary.matchId, sunnyMatchIds))
         : Promise.resolve([] as ParticipantRow[]),
       loadGoalsForMatches(coldMatchIds),
       loadGoalsForMatches(rainMatchIds),

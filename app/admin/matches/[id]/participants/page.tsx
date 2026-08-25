@@ -5,6 +5,10 @@ import { matchParticipants, matches, players } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { recalculateMatchMvp } from "@/src/lib/mvp";
 
+// Obergrenze für die Wechselminute. Bewusst großzügig, damit auch lange
+// Nachspielzeiten erfassbar bleiben.
+const MAX_SWITCH_MINUTE = 120;
+
 export default async function MatchParticipantsPage({
   params,
   searchParams,
@@ -56,11 +60,27 @@ export default async function MatchParticipantsPage({
     .orderBy(asc(players.name));
 
   const existing = await db
-    .select({ playerId: matchParticipants.playerId, teamSide: matchParticipants.teamSide })
+    .select({
+      playerId: matchParticipants.playerId,
+      teamSide: matchParticipants.teamSide,
+      fromMinute: matchParticipants.fromMinute,
+    })
     .from(matchParticipants)
-    .where(eq(matchParticipants.matchId, matchId));
+    .where(eq(matchParticipants.matchId, matchId))
+    .orderBy(asc(matchParticipants.playerId), asc(matchParticipants.fromMinute));
 
-  const selectedByPlayerId = new Map(existing.map((row) => [row.playerId, row.teamSide]));
+  // Erster Abschnitt = Startseite, ein zweiter Abschnitt = Wechsel.
+  const startSideByPlayerId = new Map<number, "team_1" | "team_2">();
+  const switchByPlayerId = new Map<number, { minute: number; teamSide: "team_1" | "team_2" }>();
+
+  for (const row of existing) {
+    if (!startSideByPlayerId.has(row.playerId)) {
+      startSideByPlayerId.set(row.playerId, row.teamSide);
+      continue;
+    }
+
+    switchByPlayerId.set(row.playerId, { minute: row.fromMinute, teamSide: row.teamSide });
+  }
 
   async function saveParticipants(formData: FormData) {
     "use server";
@@ -102,6 +122,8 @@ export default async function MatchParticipantsPage({
         matchId: number;
         playerId: number;
         teamSide: "team_1" | "team_2";
+        fromMinute: number;
+        toMinute: number | null;
       }> = [];
       const seenPlayerIds = new Set<number>();
 
@@ -109,16 +131,50 @@ export default async function MatchParticipantsPage({
         const selection = formData.get(`player_${player.id}`);
 
         if (
-          (selection === "team_1" || selection === "team_2") &&
-          !seenPlayerIds.has(player.id)
+          (selection !== "team_1" && selection !== "team_2") ||
+          seenPlayerIds.has(player.id)
         ) {
+          continue;
+        }
+
+        seenPlayerIds.add(player.id);
+
+        const switchMinuteRaw = String(formData.get(`switch_minute_${player.id}`) ?? "").trim();
+        const switchMinute = switchMinuteRaw === "" ? null : Number(switchMinuteRaw);
+        const hasValidSwitch =
+          switchMinute !== null &&
+          Number.isInteger(switchMinute) &&
+          switchMinute > 0 &&
+          switchMinute < MAX_SWITCH_MINUTE;
+
+        if (!hasValidSwitch) {
           rowsToInsert.push({
             matchId: targetMatchId,
             playerId: player.id,
             teamSide: selection,
+            fromMinute: 0,
+            toMinute: null,
           });
-          seenPlayerIds.add(player.id);
+          continue;
         }
+
+        // Wechsel: bis zur Minute auf der Startseite, danach auf der Gegenseite.
+        const otherSide = selection === "team_1" ? "team_2" : "team_1";
+
+        rowsToInsert.push({
+          matchId: targetMatchId,
+          playerId: player.id,
+          teamSide: selection,
+          fromMinute: 0,
+          toMinute: switchMinute,
+        });
+        rowsToInsert.push({
+          matchId: targetMatchId,
+          playerId: player.id,
+          teamSide: otherSide,
+          fromMinute: switchMinute,
+          toMinute: null,
+        });
       }
 
       if (rowsToInsert.length > 0) {
@@ -164,21 +220,38 @@ export default async function MatchParticipantsPage({
           <input type="hidden" name="matchId" value={matchId} />
 
           {activePlayers.map((player) => {
-            const selected = selectedByPlayerId.get(player.id) ?? "none";
+            const selected = startSideByPlayerId.get(player.id) ?? "none";
+            const switchInfo = switchByPlayerId.get(player.id);
 
             return (
-              <label key={player.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-zinc-300 bg-stone-50 p-3">
-                <span className="text-zinc-800">{player.name}</span>
-                <select
-                  name={`player_${player.id}`}
-                  defaultValue={selected}
-                  className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
-                >
-                  <option value="none">nicht dabei</option>
-                  <option value="team_1">Team 1</option>
-                  <option value="team_2">Team 2</option>
-                </select>
-              </label>
+              <div key={player.id} className="rounded-lg border border-zinc-300 bg-stone-50 p-3">
+                <label className="grid grid-cols-[1fr_auto] items-center gap-3">
+                  <span className="text-zinc-800">{player.name}</span>
+                  <select
+                    name={`player_${player.id}`}
+                    defaultValue={selected}
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2"
+                  >
+                    <option value="none">nicht dabei</option>
+                    <option value="team_1">Team 1</option>
+                    <option value="team_2">Team 2</option>
+                  </select>
+                </label>
+
+                <label className="mt-2 flex items-center justify-end gap-2 text-sm text-zinc-500">
+                  <span>wechselt ab Minute</span>
+                  <input
+                    type="number"
+                    name={`switch_minute_${player.id}`}
+                    defaultValue={switchInfo ? String(switchInfo.minute) : ""}
+                    min={1}
+                    max={MAX_SWITCH_MINUTE - 1}
+                    placeholder="—"
+                    className="w-20 rounded-lg border border-zinc-300 bg-white px-2 py-1 text-right"
+                  />
+                  <span>zur anderen Seite</span>
+                </label>
+              </div>
             );
           })}
 

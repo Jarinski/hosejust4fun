@@ -1,6 +1,7 @@
 import {
   pgTable,
   pgEnum,
+  pgView,
   index,
   uniqueIndex,
   serial,
@@ -57,17 +58,44 @@ export const matches = pgTable("matches", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const matchParticipants = pgTable("match_participants", {
-  id: serial("id").primaryKey(),
-  matchId: integer("match_id")
-    .notNull()
-    .references(() => matches.id),
-  playerId: integer("player_id")
-    .notNull()
-    .references(() => players.id),
+// Eine Zeile pro Spielabschnitt, in dem ein Spieler auf einer Seite stand.
+// Normalfall: genau eine Zeile mit fromMinute 0 und toMinute null (ganzes Spiel).
+// Teamwechsel: zwei Zeilen, z. B. (team_1, 0, 45) und (team_2, 45, null).
+export const matchParticipants = pgTable(
+  "match_participants",
+  {
+    id: serial("id").primaryKey(),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => matches.id),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id),
+    teamSide: teamSideEnum("team_side").notNull(),
+    fromMinute: integer("from_minute").notNull().default(0),
+    toMinute: integer("to_minute"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    matchPlayerFromUq: uniqueIndex("match_participants_match_player_from_uq").on(
+      table.matchId,
+      table.playerId,
+      table.fromMinute
+    ),
+  })
+);
+
+// Genau eine Zeile pro (Spiel, Spieler): die Seite mit der meisten Spielzeit,
+// bei Gleichstand die Startseite. Shape identisch zur Tabelle vor der
+// Segment-Erweiterung, damit alle Sieg-/Niederlage-Auswertungen unverändert
+// darauf laufen können. Angelegt via scripts/apply-team-switch-manually.ts.
+export const matchParticipantPrimary = pgView("match_participant_primary", {
+  id: integer("id").notNull(),
+  matchId: integer("match_id").notNull(),
+  playerId: integer("player_id").notNull(),
   teamSide: teamSideEnum("team_side").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  createdAt: timestamp("created_at"),
+}).existing();
 
 export const matchdayParticipants = pgTable("matchday_participants", {
   id: serial("id").primaryKey(),

@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import {
   goalEvents,
   legacyPlayerCareerStats,
-  matchParticipants,
+  matchParticipantPrimary,
   matchWeather,
   matchdayParticipants,
   matchdays,
@@ -209,12 +209,12 @@ export default async function MatchdayPage({
     historicalMatchIds.length > 0
       ? await db
           .select({
-            matchId: matchParticipants.matchId,
-            playerId: matchParticipants.playerId,
-            teamSide: matchParticipants.teamSide,
+            matchId: matchParticipantPrimary.matchId,
+            playerId: matchParticipantPrimary.playerId,
+            teamSide: matchParticipantPrimary.teamSide,
           })
-          .from(matchParticipants)
-          .where(inArray(matchParticipants.matchId, historicalMatchIds))
+          .from(matchParticipantPrimary)
+          .where(inArray(matchParticipantPrimary.matchId, historicalMatchIds))
       : [];
 
   const playerNameById = new Map(activePlayers.map((player) => [player.id, player.name]));

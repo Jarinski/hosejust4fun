@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import {
   goalEvents,
   legacyPlayerCareerStats,
-  matchParticipants,
+  matchParticipantPrimary,
   players,
 } from "@/src/db/schema";
 
@@ -52,10 +52,10 @@ async function getModernPlayerStats(isGuest: boolean): Promise<ModernPlayerRow[]
       db
         .select({
           playerId: players.id,
-          games: sql<number>`count(${matchParticipants.id})`,
+          games: sql<number>`count(${matchParticipantPrimary.id})`,
         })
-        .from(matchParticipants)
-        .innerJoin(players, eq(matchParticipants.playerId, players.id))
+        .from(matchParticipantPrimary)
+        .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
         .where(eq(players.isGuest, isGuest))
         .groupBy(players.id),
 
@@ -100,10 +100,10 @@ async function getModernPlayerStats(isGuest: boolean): Promise<ModernPlayerRow[]
         db
           .select({
             playerId: players.id,
-            games: sql<number>`count(${matchParticipants.id})`,
+            games: sql<number>`count(${matchParticipantPrimary.id})`,
           })
-          .from(matchParticipants)
-          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .from(matchParticipantPrimary)
+          .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
           .groupBy(players.id),
         db
           .select({

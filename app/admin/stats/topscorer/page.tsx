@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, players, seasons } from "@/src/db/schema";
 
 type TopscorerPageProps = {
   searchParams: Promise<{ seasonId?: string | string[]; sort?: string | string[]; dir?: string | string[] }>;
@@ -144,21 +144,21 @@ export default async function TopscorerPage({ searchParams }: TopscorerPageProps
       ? await db
           .select({
             playerId: players.id,
-            games: sql<number>`count(${matchParticipants.id})`,
+            games: sql<number>`count(${matchParticipantPrimary.id})`,
           })
-          .from(matchParticipants)
-          .innerJoin(players, eq(matchParticipants.playerId, players.id))
-          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .from(matchParticipantPrimary)
+          .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
           .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
           .groupBy(players.id)
       : await db
           .select({
             playerId: players.id,
-            games: sql<number>`count(${matchParticipants.id})`,
+            games: sql<number>`count(${matchParticipantPrimary.id})`,
           })
-          .from(matchParticipants)
-          .innerJoin(players, eq(matchParticipants.playerId, players.id))
-          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+          .from(matchParticipantPrimary)
+          .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
+          .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
           .where(gte(matches.matchDate, MODERN_START_DATE))
           .groupBy(players.id);
 

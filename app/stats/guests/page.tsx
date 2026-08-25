@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, players } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, players } from "@/src/db/schema";
 
 type GuestPlayerRow = {
   playerId: number;
@@ -27,10 +27,10 @@ async function getGuestPlayerStats(): Promise<GuestPlayerRow[]> {
         db
           .select({
             playerId: players.id,
-            games: sql<number>`count(${matchParticipants.id})`,
+            games: sql<number>`count(${matchParticipantPrimary.id})`,
           })
-          .from(matchParticipants)
-          .innerJoin(players, eq(matchParticipants.playerId, players.id))
+          .from(matchParticipantPrimary)
+          .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
           .where(eq(players.isGuest, true))
           .groupBy(players.id),
         db

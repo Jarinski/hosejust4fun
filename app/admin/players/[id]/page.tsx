@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import {
   goalEvents,
+  matchParticipantPrimary,
   matchParticipants,
   matches,
   matchWeather,
@@ -392,13 +393,13 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       db
         .select({
           seasonId: matches.seasonId,
-          playerId: matchParticipants.playerId,
-          teamSide: matchParticipants.teamSide,
+          playerId: matchParticipantPrimary.playerId,
+          teamSide: matchParticipantPrimary.teamSide,
           team1Score: matches.team1Score,
           team2Score: matches.team2Score,
         })
-        .from(matchParticipants)
-        .innerJoin(matches, eq(matchParticipants.matchId, matches.id)),
+        .from(matchParticipantPrimary)
+        .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id)),
       loadSeasonalGoalCounts(),
       loadSeasonalAssistCounts(),
     ]);
@@ -556,19 +557,19 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
   const gameCountRows = await db
     .select({ count: sql<number>`count(*)` })
-    .from(matchParticipants)
-    .where(eq(matchParticipants.playerId, playerId));
+    .from(matchParticipantPrimary)
+    .where(eq(matchParticipantPrimary.playerId, playerId));
 
   const participationRows = await db
     .select({
-      matchId: matchParticipants.matchId,
-      teamSide: matchParticipants.teamSide,
+      matchId: matchParticipantPrimary.matchId,
+      teamSide: matchParticipantPrimary.teamSide,
       team1Score: matches.team1Score,
       team2Score: matches.team2Score,
     })
-    .from(matchParticipants)
-    .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-    .where(eq(matchParticipants.playerId, playerId));
+    .from(matchParticipantPrimary)
+    .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
+    .where(eq(matchParticipantPrimary.playerId, playerId));
 
   const goalCountRows = await db
     .select({ count: sql<number>`count(*)` })
@@ -587,9 +588,9 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       team1Name: matches.team1Name,
       team2Name: matches.team2Name,
     })
-    .from(matchParticipants)
-    .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-    .where(eq(matchParticipants.playerId, playerId))
+    .from(matchParticipantPrimary)
+    .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
+    .where(eq(matchParticipantPrimary.playerId, playerId))
     .orderBy(desc(matches.matchDate), desc(matches.id))
     .limit(10);
 
@@ -619,16 +620,16 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
 
   const weatherMatches = await db
     .select({
-      matchId: matchParticipants.matchId,
+      matchId: matchParticipantPrimary.matchId,
       temperatureC: matchWeather.temperatureC,
       precipMm: matchWeather.precipMm,
       conditionLabel: matchWeather.conditionLabel,
       mvpPlayerId: matches.mvpPlayerId,
     })
-    .from(matchParticipants)
-    .innerJoin(matchWeather, eq(matchParticipants.matchId, matchWeather.matchId))
-    .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-    .where(eq(matchParticipants.playerId, playerId));
+    .from(matchParticipantPrimary)
+    .innerJoin(matchWeather, eq(matchParticipantPrimary.matchId, matchWeather.matchId))
+    .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
+    .where(eq(matchParticipantPrimary.playerId, playerId));
 
   const playerMatchIds = Array.from(new Set(participationRows.map((row) => row.matchId)));
 
@@ -637,12 +638,12 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       playerMatchIds.length > 0
         ? db
             .select({
-              matchId: matchParticipants.matchId,
-              playerId: matchParticipants.playerId,
-              teamSide: matchParticipants.teamSide,
+              matchId: matchParticipantPrimary.matchId,
+              playerId: matchParticipantPrimary.playerId,
+              teamSide: matchParticipantPrimary.teamSide,
             })
-            .from(matchParticipants)
-            .where(inArray(matchParticipants.matchId, playerMatchIds))
+            .from(matchParticipantPrimary)
+            .where(inArray(matchParticipantPrimary.matchId, playerMatchIds))
         : Promise.resolve([] as Array<{ matchId: number; playerId: number; teamSide: "team_1" | "team_2" }>),
       loadGoalsForMatches(playerMatchIds),
       loadGoalTimelineForMatches(playerMatchIds),
@@ -1039,6 +1040,8 @@ export default async function PlayerDetailPage({ params, searchParams }: PlayerD
       redirect("/stats/players");
     }
 
+    // Bewusst gegen die Tabelle, nicht gegen die View: für die Löschsperre
+    // zählt jeder erfasste Abschnitt, auch der kürzere Teil eines Wechsels.
     const participantLinks = await db
       .select({ count: sql<number>`count(*)` })
       .from(matchParticipants)

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, playerBadges } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, playerBadges } from "@/src/db/schema";
 import { BADGE_KEYS, type BadgeKey } from "@/src/lib/badges";
 
 type TeamSide = "team_1" | "team_2";
@@ -87,12 +87,12 @@ export async function recomputeSeasonStreakBadges(seasonId: number) {
 
   const participantRows = await db
     .select({
-      matchId: matchParticipants.matchId,
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
+      matchId: matchParticipantPrimary.matchId,
+      playerId: matchParticipantPrimary.playerId,
+      teamSide: matchParticipantPrimary.teamSide,
     })
-    .from(matchParticipants)
-    .where(inArray(matchParticipants.matchId, matchIds));
+    .from(matchParticipantPrimary)
+    .where(inArray(matchParticipantPrimary.matchId, matchIds));
 
   const participantsByMatch = new Map<number, ParticipantRow[]>();
 

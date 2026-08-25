@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, players, seasons } from "@/src/db/schema";
 
 type TrioPerformance = {
   player1Id: number;
@@ -61,21 +61,21 @@ export default async function TrioPerformancePage({ searchParams }: TrioPerforma
   const participants = validSeasonId
     ? await db
         .select({
-          matchId: matchParticipants.matchId,
-          playerId: matchParticipants.playerId,
-          teamSide: matchParticipants.teamSide,
+          matchId: matchParticipantPrimary.matchId,
+          playerId: matchParticipantPrimary.playerId,
+          teamSide: matchParticipantPrimary.teamSide,
         })
-        .from(matchParticipants)
-        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .from(matchParticipantPrimary)
+        .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
         .where(and(eq(matches.seasonId, validSeasonId), gte(matches.matchDate, MODERN_START_DATE)))
     : await db
         .select({
-          matchId: matchParticipants.matchId,
-          playerId: matchParticipants.playerId,
-          teamSide: matchParticipants.teamSide,
+          matchId: matchParticipantPrimary.matchId,
+          playerId: matchParticipantPrimary.playerId,
+          teamSide: matchParticipantPrimary.teamSide,
         })
-        .from(matchParticipants)
-        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .from(matchParticipantPrimary)
+        .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
         .where(gte(matches.matchDate, MODERN_START_DATE));
 
   const filterUi = (

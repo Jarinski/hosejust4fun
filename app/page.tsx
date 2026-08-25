@@ -5,7 +5,7 @@ import { db } from "@/src/db";
 import {
   goalEvents,
   legacyPlayerCareerStats,
-  matchParticipants,
+  matchParticipantPrimary,
   matchdayParticipants,
   matchdays,
   matches,
@@ -368,12 +368,12 @@ export default async function Home() {
     historicalMatchIdsForForecast.length > 0
       ? await db
           .select({
-            matchId: matchParticipants.matchId,
-            playerId: matchParticipants.playerId,
-            teamSide: matchParticipants.teamSide,
+            matchId: matchParticipantPrimary.matchId,
+            playerId: matchParticipantPrimary.playerId,
+            teamSide: matchParticipantPrimary.teamSide,
           })
-          .from(matchParticipants)
-          .where(inArray(matchParticipants.matchId, historicalMatchIdsForForecast))
+          .from(matchParticipantPrimary)
+          .where(inArray(matchParticipantPrimary.matchId, historicalMatchIdsForForecast))
       : [];
 
   const participantIdsByMatch = new Map<number, Set<number>>();
@@ -812,7 +812,7 @@ export default async function Home() {
   const goalsCount = sql<number>`count(${goalEvents.id})`;
   const assistsCount = sql<number>`count(${goalEvents.id})`;
   const mvpCount = sql<number>`count(${matches.id})`;
-  const gamesCount = sql<number>`count(${matchParticipants.id})`;
+  const gamesCount = sql<number>`count(${matchParticipantPrimary.id})`;
 
   const [scorerGoalRows, assistRows, mostGames] = await Promise.all([
     db
@@ -842,8 +842,8 @@ export default async function Home() {
         playerName: players.name,
         value: gamesCount.as("value"),
       })
-      .from(matchParticipants)
-      .innerJoin(players, eq(matchParticipants.playerId, players.id))
+      .from(matchParticipantPrimary)
+      .innerJoin(players, eq(matchParticipantPrimary.playerId, players.id))
       .groupBy(players.id, players.name)
       .orderBy(desc(gamesCount), asc(players.name))
       .limit(5),

@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, players } from "@/src/db/schema";
 import { requireAdmin, requireAdminInAction } from "@/src/lib/auth";
 import { awardSimpleBadgesForMatch } from "@/src/lib/awardSimpleBadgesForMatch";
 import { recomputeSeasonStreakBadges } from "@/src/lib/recomputeSeasonStreakBadges";
@@ -73,13 +73,13 @@ export default async function MatchGoalsPage({
 
   const participantRows = await db
     .select({
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
+      playerId: matchParticipantPrimary.playerId,
+      teamSide: matchParticipantPrimary.teamSide,
       playerName: players.name,
     })
-    .from(matchParticipants)
-    .innerJoin(players, eq(players.id, matchParticipants.playerId))
-    .where(eq(matchParticipants.matchId, matchId))
+    .from(matchParticipantPrimary)
+    .innerJoin(players, eq(players.id, matchParticipantPrimary.playerId))
+    .where(eq(matchParticipantPrimary.matchId, matchId))
     .orderBy(asc(players.name));
 
   const team1Players = participantRows
@@ -203,11 +203,11 @@ export default async function MatchGoalsPage({
 
     const participants = await db
       .select({
-        playerId: matchParticipants.playerId,
-        teamSide: matchParticipants.teamSide,
+        playerId: matchParticipantPrimary.playerId,
+        teamSide: matchParticipantPrimary.teamSide,
       })
-      .from(matchParticipants)
-      .where(eq(matchParticipants.matchId, targetMatchId));
+      .from(matchParticipantPrimary)
+      .where(eq(matchParticipantPrimary.matchId, targetMatchId));
 
     const team1Ids = new Set(
       participants

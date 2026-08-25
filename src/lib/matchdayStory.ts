@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, players } from "@/src/db/schema";
 
 type TeamSide = "team_1" | "team_2";
 type MatchResult = "win" | "loss" | "draw";
@@ -292,12 +292,12 @@ export async function buildUpcomingMatchdayStory(options?: {
       ? []
       : await db
           .select({
-            matchId: matchParticipants.matchId,
-            playerId: matchParticipants.playerId,
-            teamSide: matchParticipants.teamSide,
+            matchId: matchParticipantPrimary.matchId,
+            playerId: matchParticipantPrimary.playerId,
+            teamSide: matchParticipantPrimary.teamSide,
           })
-          .from(matchParticipants)
-          .where(inArray(matchParticipants.matchId, matchIds));
+          .from(matchParticipantPrimary)
+          .where(inArray(matchParticipantPrimary.matchId, matchIds));
 
   const goals =
     matchIds.length === 0

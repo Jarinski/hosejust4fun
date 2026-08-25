@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, players, seasons } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, players, seasons } from "@/src/db/schema";
 
 type GoalsAgainstPageProps = {
   searchParams: Promise<{
@@ -70,20 +70,20 @@ export default async function GoalsAgainstPage({ searchParams }: GoalsAgainstPag
   const participantsPromise = validSeasonId
     ? db
         .select({
-          matchId: matchParticipants.matchId,
-          playerId: matchParticipants.playerId,
-          teamSide: matchParticipants.teamSide,
+          matchId: matchParticipantPrimary.matchId,
+          playerId: matchParticipantPrimary.playerId,
+          teamSide: matchParticipantPrimary.teamSide,
         })
-        .from(matchParticipants)
-        .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+        .from(matchParticipantPrimary)
+        .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
         .where(eq(matches.seasonId, validSeasonId))
     : db
         .select({
-          matchId: matchParticipants.matchId,
-          playerId: matchParticipants.playerId,
-          teamSide: matchParticipants.teamSide,
+          matchId: matchParticipantPrimary.matchId,
+          playerId: matchParticipantPrimary.playerId,
+          teamSide: matchParticipantPrimary.teamSide,
         })
-        .from(matchParticipants);
+        .from(matchParticipantPrimary);
 
   const goalsPromise = validSeasonId
     ? db

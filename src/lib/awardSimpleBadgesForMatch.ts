@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches, matchWeather, playerBadges } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches, matchWeather, playerBadges } from "@/src/db/schema";
 import { BADGE_KEYS, type BadgeKey } from "@/src/lib/badges";
 
 type TeamSide = "team_1" | "team_2";
@@ -208,11 +208,11 @@ export async function awardSimpleBadgesForMatch(matchId: number) {
 
   const participantRows = await db
     .select({
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
+      playerId: matchParticipantPrimary.playerId,
+      teamSide: matchParticipantPrimary.teamSide,
     })
-    .from(matchParticipants)
-    .where(eq(matchParticipants.matchId, matchId));
+    .from(matchParticipantPrimary)
+    .where(eq(matchParticipantPrimary.matchId, matchId));
 
   const sortedGoalRows = [...goalRows].sort((a, b) => {
     if (a.minute !== null && b.minute !== null && a.minute !== b.minute) {

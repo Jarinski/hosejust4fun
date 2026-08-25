@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/src/db";
 import {
   goalEvents,
-  matchParticipants,
+  matchParticipantPrimary,
   matches,
   matchWeather,
   playerBadges,
@@ -231,14 +231,14 @@ export default async function MatchDetailPage({
 
   const participantRows = await db
     .select({
-      id: matchParticipants.id,
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
+      id: matchParticipantPrimary.id,
+      playerId: matchParticipantPrimary.playerId,
+      teamSide: matchParticipantPrimary.teamSide,
       playerName: players.name,
     })
-    .from(matchParticipants)
-    .innerJoin(players, eq(players.id, matchParticipants.playerId))
-    .where(eq(matchParticipants.matchId, matchId))
+    .from(matchParticipantPrimary)
+    .innerJoin(players, eq(players.id, matchParticipantPrimary.playerId))
+    .where(eq(matchParticipantPrimary.matchId, matchId))
     .orderBy(asc(players.name));
 
   let ownGoalColumnAvailable = true;

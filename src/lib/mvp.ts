@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/src/db";
-import { goalEvents, matchParticipants, matches } from "@/src/db/schema";
+import { goalEvents, matchParticipantPrimary, matches } from "@/src/db/schema";
 
 type TeamSide = "team_1" | "team_2";
 
@@ -27,11 +27,11 @@ export async function recalculateMatchMvp(matchId: number) {
   const [participantRows, goalRows] = await Promise.all([
     db
       .select({
-        playerId: matchParticipants.playerId,
-        teamSide: matchParticipants.teamSide,
+        playerId: matchParticipantPrimary.playerId,
+        teamSide: matchParticipantPrimary.teamSide,
       })
-      .from(matchParticipants)
-      .where(eq(matchParticipants.matchId, matchId)),
+      .from(matchParticipantPrimary)
+      .where(eq(matchParticipantPrimary.matchId, matchId)),
     db
       .select({
         teamSide: goalEvents.teamSide,

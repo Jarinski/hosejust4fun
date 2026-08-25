@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { inArray } from "drizzle-orm";
 import { db } from "@/src/db";
-import { matchParticipants, players } from "@/src/db/schema";
+import { matchParticipantPrimary, players } from "@/src/db/schema";
 
 type DuoCount = {
   player1Id: number;
@@ -21,11 +21,11 @@ export default async function DuosPage({ searchParams }: DuosPageProps) {
   const sortDir = dirParam === "asc" ? "asc" : "desc";
   const participants = await db
     .select({
-      matchId: matchParticipants.matchId,
-      playerId: matchParticipants.playerId,
-      teamSide: matchParticipants.teamSide,
+      matchId: matchParticipantPrimary.matchId,
+      playerId: matchParticipantPrimary.playerId,
+      teamSide: matchParticipantPrimary.teamSide,
     })
-    .from(matchParticipants);
+    .from(matchParticipantPrimary);
 
   if (participants.length === 0) {
     return (

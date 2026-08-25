@@ -6,7 +6,7 @@ import {
   goalEvents,
   matchdayParticipants,
   matchdays,
-  matchParticipants,
+  matchParticipantPrimary,
   matches,
   playerBadges,
   playerPlanningProfiles,
@@ -93,14 +93,14 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     playerIds.length
       ? db
           .select({
-            playerId: matchParticipants.playerId,
-            teamSide: matchParticipants.teamSide,
+            playerId: matchParticipantPrimary.playerId,
+            teamSide: matchParticipantPrimary.teamSide,
             team1Score: matches.team1Score,
             team2Score: matches.team2Score,
           })
-          .from(matchParticipants)
-          .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
-          .where(inArray(matchParticipants.playerId, playerIds))
+          .from(matchParticipantPrimary)
+          .innerJoin(matches, eq(matchParticipantPrimary.matchId, matches.id))
+          .where(inArray(matchParticipantPrimary.playerId, playerIds))
       : Promise.resolve([] as Array<{ playerId: number; teamSide: "team_1" | "team_2"; team1Score: number; team2Score: number }>),
     playerIds.length
       ? db
@@ -166,13 +166,13 @@ export default async function MatchdayPlanningStatsPage({ searchParams }: Planni
     playerIds.length
       ? db
           .select({
-            playerId: matchParticipants.playerId,
+            playerId: matchParticipantPrimary.playerId,
             count: sql<number>`count(${goalEvents.id})`,
           })
-          .from(matchParticipants)
-          .innerJoin(goalEvents, and(eq(goalEvents.matchId, matchParticipants.matchId), eq(goalEvents.teamSide, matchParticipants.teamSide)))
-          .where(inArray(matchParticipants.playerId, playerIds))
-          .groupBy(matchParticipants.playerId)
+          .from(matchParticipantPrimary)
+          .innerJoin(goalEvents, and(eq(goalEvents.matchId, matchParticipantPrimary.matchId), eq(goalEvents.teamSide, matchParticipantPrimary.teamSide)))
+          .where(inArray(matchParticipantPrimary.playerId, playerIds))
+          .groupBy(matchParticipantPrimary.playerId)
       : Promise.resolve([] as Array<{ playerId: number; count: number }>),
   ]);
 
